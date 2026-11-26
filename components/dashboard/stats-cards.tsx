@@ -1,6 +1,7 @@
 'use client';
 
 import { motion } from '@/lib/motion';
+import { KPI_GLOW, hexAlpha } from '@/lib/palette';
 import { Users, Map, BarChart3, Bell, TrendingUp, TrendingDown, Minus } from 'lucide-react';
 import { cn, formatNumber, getTrendColor } from '@/lib/utils';
 import type { KPIStats } from '@/types/api';
@@ -17,8 +18,8 @@ const cards = [
     label: 'Producteurs',
     icon: Users,
     iconColor: 'hsl(var(--success))',
-    iconBg: 'rgba(52,211,153,0.12)',
-    glow: '#34D399',
+    iconBg: hexAlpha(KPI_GLOW.success, 0.12),
+    glow: KPI_GLOW.success,
     suffix: '',
   },
   {
@@ -27,8 +28,8 @@ const cards = [
     label: 'Superficie totale',
     icon: Map,
     iconColor: 'hsl(var(--accent))',
-    iconBg: 'rgba(96,165,250,0.12)',
-    glow: '#60A5FA',
+    iconBg: hexAlpha(KPI_GLOW.info, 0.12),
+    glow: KPI_GLOW.info,
     suffix: ' ha',
   },
   {
@@ -36,9 +37,9 @@ const cards = [
     trendKey: 'yield_trend' as const,
     label: 'Rendement moyen',
     icon: BarChart3,
-    iconColor: '#FBBF24',
-    iconBg: 'rgba(251,191,36,0.12)',
-    glow: '#FBBF24',
+    iconColor: KPI_GLOW.warning,
+    iconBg: hexAlpha(KPI_GLOW.warning, 0.12),
+    glow: KPI_GLOW.warning,
     suffix: ' kg/ha',
   },
   {
@@ -47,8 +48,8 @@ const cards = [
     label: 'Alertes actives',
     icon: Bell,
     iconColor: 'hsl(var(--destructive))',
-    iconBg: 'rgba(248,113,113,0.12)',
-    glow: '#F87171',
+    iconBg: hexAlpha(KPI_GLOW.danger, 0.12),
+    glow: KPI_GLOW.danger,
     suffix: '',
   },
 ] as const;
@@ -197,9 +198,9 @@ export function StatsCards({ data, isLoading }: StatsCardsProps) {
                           data.alerts_severity === 'warning' ? 'rgba(234,179,8,0.12)' :
                           'rgba(59,130,246,0.12)',
                         color: data.alerts_severity === 'emergency' ? 'hsl(var(--destructive))' :
-                          data.alerts_severity === 'critical' ? '#fb923c' :
-                          data.alerts_severity === 'warning' ? '#fbbf24' :
-                          '#60a5fa',
+                          data.alerts_severity === 'critical' ? KPI_GLOW.critical :
+                          data.alerts_severity === 'warning' ? KPI_GLOW.warning :
+                          KPI_GLOW.info,
                         border: `1px solid ${
                           data.alerts_severity === 'emergency' ? 'rgba(239,68,68,0.25)' :
                           data.alerts_severity === 'critical' ? 'rgba(249,115,22,0.25)' :

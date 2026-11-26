@@ -2,6 +2,8 @@
 // SECTION 1: APPLICATION METADATA
 // ============================================================================
 
+import { SECTOR_CHART_COLORS } from './palette';
+
 export const APP_NAME = 'AgriIntel360';
 export const APP_TAGLINE = "Intelligence agricole pour l'Afrique";
 export const APP_DESCRIPTION = "Plateforme d'intelligence agricole couvrant l'ensemble du continent africain avec des outils de prédiction, cartographie interactive et analyse de marchés.";
@@ -149,37 +151,37 @@ export const SECTOR_CONFIG: Record<Sector, {
   vegetal: {
     label: 'Végétal',
     emoji: '🌱',
-    color: '#16A34A',
+    color: SECTOR_CHART_COLORS.vegetal,
     description: 'Production végétale et cultures',
   },
   animal: {
     label: 'Animal',
     emoji: '🐄',
-    color: '#D97706',
+    color: SECTOR_CHART_COLORS.animal,
     description: 'Élevage et production animale',
   },
   halieutique: {
     label: 'Halieutique',
     emoji: '🎣',
-    color: '#0891B2',
+    color: SECTOR_CHART_COLORS.halieutique,
     description: 'Pêche et aquaculture',
   },
   forestier: {
     label: 'Forestier',
     emoji: '🌲',
-    color: '#92400E',
+    color: SECTOR_CHART_COLORS.forestier,
     description: 'Forêts et produits forestiers',
   },
   minier: {
     label: 'Minier',
     emoji: '⛏️',
-    color: '#6B7280',
+    color: SECTOR_CHART_COLORS.minier,
     description: 'Exploitation minière',
   },
   industriel: {
     label: 'Industriel',
     emoji: '🏭',
-    color: '#4F46E5',
+    color: SECTOR_CHART_COLORS.industriel,
     description: 'Industrie agroalimentaire',
   },
 };
@@ -547,7 +549,7 @@ export const SECTOR_SHOWCASE: SectorShowcase[] = [
       'Calendrier cultural personnalisé',
       'Recommandations engrais',
     ],
-    color: '#16A34A',
+    color: SECTOR_CHART_COLORS.vegetal,
     image: '/images/sectors/vegetal.webp',
   },
   {
@@ -564,7 +566,7 @@ export const SECTOR_SHOWCASE: SectorShowcase[] = [
       'Génétique & reproduction',
       'Traçabilité complète',
     ],
-    color: '#D97706',
+    color: SECTOR_CHART_COLORS.animal,
     image: '/images/sectors/animal.webp',
   },
   {
@@ -581,7 +583,7 @@ export const SECTOR_SHOWCASE: SectorShowcase[] = [
       'Alertes interdictions',
       'Traçabilité lots',
     ],
-    color: '#0891B2',
+    color: SECTOR_CHART_COLORS.halieutique,
     image: '/images/sectors/halieutique.webp',
   },
   {
@@ -598,7 +600,7 @@ export const SECTOR_SHOWCASE: SectorShowcase[] = [
       'Traçabilité bois',
       'Reboisement & carbone',
     ],
-    color: '#92400E',
+    color: SECTOR_CHART_COLORS.forestier,
     image: '/images/sectors/forestier.webp',
   },
   {
@@ -614,7 +616,7 @@ export const SECTOR_SHOWCASE: SectorShowcase[] = [
       'Alertes pollution',
       'Conflits usage terres',
     ],
-    color: '#6B7280',
+    color: SECTOR_CHART_COLORS.minier,
     image: '/images/sectors/minier.webp',
   },
   {
@@ -630,7 +632,7 @@ export const SECTOR_SHOWCASE: SectorShowcase[] = [
       'Optimisation chaîne valeur',
       'Marchés export',
     ],
-    color: '#4F46E5',
+    color: SECTOR_CHART_COLORS.industriel,
     image: '/images/sectors/industriel.webp',
   },
 ];

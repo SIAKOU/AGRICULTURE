@@ -2,6 +2,7 @@ import { type ClassValue, clsx } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import { formatDistanceToNow, format, parseISO, isValid } from 'date-fns';
 import { fr, enUS, type Locale } from 'date-fns/locale';
+import { SEVERITY_COLORS as SEVERITY_PALETTE, SECTOR_CHART_COLORS } from './palette';
 
 // ============================================================================
 // SECTION 1: TAILWIND / CLSX UTILITIES
@@ -315,13 +316,14 @@ export function formatTrend(trend: number, locale: SupportedLocale = 'fr'): stri
 
 export type SectorKey = 'vegetal' | 'animal' | 'halieutique' | 'forestier' | 'minier' | 'industriel';
 
+// Source unique : lib/palette.ts (variante littérale, utilisable en SVG/canvas).
 export const SECTOR_COLORS: Record<SectorKey, string> = {
-  vegetal: '#16A34A',
-  animal: '#D97706',
-  halieutique: '#0891B2',
-  forestier: '#92400E',
-  minier: '#6B7280',
-  industriel: '#4F46E5',
+  vegetal: SECTOR_CHART_COLORS.vegetal,
+  animal: SECTOR_CHART_COLORS.animal,
+  halieutique: SECTOR_CHART_COLORS.halieutique,
+  forestier: SECTOR_CHART_COLORS.forestier,
+  minier: SECTOR_CHART_COLORS.minier,
+  industriel: SECTOR_CHART_COLORS.industriel,
 };
 
 export const SECTOR_LABELS: Record<SectorKey, string> = {
@@ -370,10 +372,10 @@ export function getSectorEmoji(sector: SectorKey): string {
 export type SeverityLevel = 'info' | 'warning' | 'critical' | 'emergency';
 
 export const SEVERITY_COLORS: Record<SeverityLevel, string> = {
-  info: '#3B82F6',
-  warning: '#EAB308',
-  critical: '#F97316',
-  emergency: '#DC2626',
+  info: SEVERITY_PALETTE.info,
+  warning: SEVERITY_PALETTE.warning,
+  critical: SEVERITY_PALETTE.critical,
+  emergency: SEVERITY_PALETTE.emergency,
 };
 
 export const SEVERITY_BG_COLORS: Record<SeverityLevel, string> = {

@@ -3,6 +3,7 @@
 import { useState, useRef, useCallback } from 'react';
 import Image from 'next/image';
 import { motion, AnimatePresence } from '@/lib/motion';
+import { CHART_ACCENTS, CHART_SERIES } from '@/lib/palette';
 import {
   BarChart3, TrendingUp, CloudSun, Globe, Upload,
   Wheat, DollarSign, Thermometer, Droplets, AlertTriangle,
@@ -56,10 +57,8 @@ const PERIODS = [
   { value: '2Y', label: '2 ans' },
 ];
 
-const CHART_COLORS = [
-  '#16A34A', '#D97706', '#0891B2', '#7C3AED',
-  '#DC2626', '#EC4899', '#6366F1', '#14B8A6',
-];
+// Séries lues dans lib/palette (attributs SVG : var() ne s'y résout pas).
+const CHART_COLORS = [...CHART_SERIES];
 
 // ─── Stat Card ───────────────────────────────────────────────────────────────
 
@@ -156,7 +155,7 @@ function OverviewSection() {
                   <XAxis type="number" tick={{ fontSize: 10 }} />
                   <YAxis dataKey="crop" type="category" tick={{ fontSize: 10 }} width={80} />
                   <Tooltip />
-                  <Bar dataKey="tonnes" fill="#D97706" radius={[0, 4, 4, 0]} maxBarSize={20} />
+                  <Bar dataKey="tonnes" fill={CHART_ACCENTS.price} radius={[0, 4, 4, 0]} maxBarSize={20} />
                 </BarChart>
               </ResponsiveContainer>
             )}
@@ -250,15 +249,15 @@ function ProductionTrendsSection() {
               <AreaChart data={data?.data ?? []}>
                 <defs>
                   <linearGradient id="prodGrad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#16A34A" stopOpacity={0.3} />
-                    <stop offset="95%" stopColor="#16A34A" stopOpacity={0} />
+                    <stop offset="5%" stopColor={CHART_ACCENTS.production} stopOpacity={0.3} />
+                    <stop offset="95%" stopColor={CHART_ACCENTS.production} stopOpacity={0} />
                   </linearGradient>
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" className="stroke-muted/50" />
                 <XAxis dataKey="date" tick={{ fontSize: 10 }} />
                 <YAxis tick={{ fontSize: 10 }} />
                 <Tooltip />
-                <Area type="monotone" dataKey="value" stroke="#16A34A" strokeWidth={2} fill="url(#prodGrad)" />
+                <Area type="monotone" dataKey="value" stroke={CHART_ACCENTS.production} strokeWidth={2} fill="url(#prodGrad)" />
               </AreaChart>
             </ResponsiveContainer>
           )}
@@ -332,7 +331,7 @@ function PriceTrendsSection() {
                 <XAxis dataKey="date" tick={{ fontSize: 10 }} />
                 <YAxis tick={{ fontSize: 10 }} />
                 <Tooltip />
-                <Line type="monotone" dataKey="value" stroke="#D97706" strokeWidth={2} dot={false} />
+                <Line type="monotone" dataKey="value" stroke={CHART_ACCENTS.price} strokeWidth={2} dot={false} />
               </LineChart>
             </ResponsiveContainer>
           )}
@@ -414,15 +413,15 @@ function WeatherSection() {
                 <AreaChart data={data?.temperature ?? []}>
                   <defs>
                     <linearGradient id="tempGrad" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#F97316" stopOpacity={0.3} />
-                      <stop offset="95%" stopColor="#F97316" stopOpacity={0} />
+                      <stop offset="5%" stopColor={CHART_ACCENTS.temperature} stopOpacity={0.3} />
+                      <stop offset="95%" stopColor={CHART_ACCENTS.temperature} stopOpacity={0} />
                     </linearGradient>
                   </defs>
                   <CartesianGrid strokeDasharray="3 3" className="stroke-muted/50" />
                   <XAxis dataKey="date" tick={{ fontSize: 10 }} />
                   <YAxis tick={{ fontSize: 10 }} />
                   <Tooltip />
-                  <Area type="monotone" dataKey="temperature" stroke="#F97316" strokeWidth={2} fill="url(#tempGrad)" />
+                  <Area type="monotone" dataKey="temperature" stroke={CHART_ACCENTS.temperature} strokeWidth={2} fill="url(#tempGrad)" />
                 </AreaChart>
               </ResponsiveContainer>
             )}
@@ -450,7 +449,7 @@ function WeatherSection() {
                   <XAxis dataKey="date" tick={{ fontSize: 10 }} />
                   <YAxis tick={{ fontSize: 10 }} />
                   <Tooltip />
-                  <Bar dataKey="precipitation" fill="#0EA5E9" radius={[2, 2, 0, 0]} maxBarSize={20} />
+                  <Bar dataKey="precipitation" fill={CHART_ACCENTS.precipitation} radius={[2, 2, 0, 0]} maxBarSize={20} />
                 </BarChart>
               </ResponsiveContainer>
             )}

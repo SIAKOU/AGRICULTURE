@@ -68,24 +68,26 @@ const STEPS = [
 // Design tokens
 // ─────────────────────────────────────────────────────────────────────────────
 
+// Habillage de l'écran : uniquement des jetons sémantiques, pour que le
+// formulaire suive le thème clair ou sombre comme le reste de l'application.
 const COLORS = {
-  accent: '#C4923A',
-  accentHover: '#DDA85A',
-  accentGlow: 'rgba(196,146,58,0.14)',
-  accentBorder: 'rgba(196,146,58,0.25)',
-  accentBorderHover: 'rgba(196,146,58,0.45)',
-  accentBg: 'rgba(196,146,58,0.08)',
-  text: '#E4DBC8',
-  textMuted: '#5E7A68',
-  textDim: 'rgba(228,219,200,0.65)',
-  error: '#f87171',
-  errorBg: 'rgba(248,113,113,0.08)',
-  errorBorder: 'rgba(248,113,113,0.30)',
-  green: '#1E6B3E',
-  surface: '#111D14',
-  card: '#162019',
-  inputBg: 'rgba(255,255,255,0.04)',
-  inputBorder: 'rgba(196,146,58,0.25)',
+  accent: 'hsl(var(--secondary))',
+  accentHover: 'hsl(var(--secondary) / 0.85)',
+  accentGlow: 'hsl(var(--secondary) / 0.14)',
+  accentBorder: 'hsl(var(--secondary) / 0.25)',
+  accentBorderHover: 'hsl(var(--secondary) / 0.45)',
+  accentBg: 'hsl(var(--secondary) / 0.08)',
+  text: 'hsl(var(--foreground))',
+  textMuted: 'hsl(var(--muted-foreground))',
+  textDim: 'hsl(var(--foreground) / 0.65)',
+  error: 'hsl(var(--destructive))',
+  errorBg: 'hsl(var(--destructive) / 0.08)',
+  errorBorder: 'hsl(var(--destructive) / 0.30)',
+  green: 'hsl(var(--primary))',
+  surface: 'hsl(var(--card))',
+  card: 'hsl(var(--surface-2))',
+  inputBg: 'hsl(var(--foreground) / 0.04)',
+  inputBorder: 'hsl(var(--secondary) / 0.25)',
 };
 
 // ─────────────────────────────────────────────────────────────────────────────

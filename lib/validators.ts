@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { PASSWORD_STRENGTH_COLORS } from './palette';
 
 // ============================================================================
 // SECTION 1: AUTHENTICATION SCHEMAS
@@ -483,12 +484,12 @@ export function getPasswordStrength(password: string): {
   if (/[^A-Za-z0-9]/.test(password)) score++;
 
   const levels = [
-    { label: 'Très faible', color: '#DC2626' },
-    { label: 'Faible', color: '#F97316' },
-    { label: 'Moyen', color: '#EAB308' },
-    { label: 'Fort', color: '#22C55E' },
-    { label: 'Très fort', color: '#16A34A' },
-    { label: 'Excellent', color: '#15803D' },
+    { label: 'Très faible', color: PASSWORD_STRENGTH_COLORS[0] },
+    { label: 'Faible', color: PASSWORD_STRENGTH_COLORS[1] },
+    { label: 'Moyen', color: PASSWORD_STRENGTH_COLORS[2] },
+    { label: 'Fort', color: PASSWORD_STRENGTH_COLORS[3] },
+    { label: 'Très fort', color: PASSWORD_STRENGTH_COLORS[4] },
+    { label: 'Excellent', color: PASSWORD_STRENGTH_COLORS[5] },
   ];
 
   const clampedScore = Math.min(score, 5);

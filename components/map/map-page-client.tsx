@@ -124,6 +124,14 @@ export function MapPageClient() {
           <div className="flex-1 overflow-hidden relative">
             <DynamicMap className="h-full w-full" />
 
+            {/* État vide : la carte ne montre que ce que l'API renvoie. */}
+            {markerCount === 0 && (
+              <div className="absolute inset-x-0 bottom-4 z-20 mx-auto w-fit max-w-md rounded-xl border border-border bg-card/95 px-4 py-2.5 text-center text-sm text-muted-foreground shadow-lg backdrop-blur-sm">
+                Aucun acteur ni alerte géolocalisé pour l'instant. Les points
+                apparaîtront dès que des coordonnées seront renseignées.
+              </div>
+            )}
+
             {/* Floating layers toggle button */}
             <button
               onClick={() => setShowLayerPanel(!showLayerPanel)}

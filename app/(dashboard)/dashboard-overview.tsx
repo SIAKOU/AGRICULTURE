@@ -18,21 +18,23 @@ import { ProductionChart } from '@/components/dashboard/production-chart';
 import { WeatherWidget } from '@/components/dashboard/weather-widget';
 import { AlertsTicker } from '@/components/dashboard/alerts-ticker';
 import { InteractiveMap } from '@/components/map/interactive-map';
+import { CHART_ACCENTS, KPI_GLOW, SECTOR_COLORS, eventColor, hexAlpha, rgba } from '@/lib/palette';
 import { cn } from '@/lib/utils';
 import type { KPIStats, ProductionDataPoint } from '@/types/api';
 import type { ActivityItem } from '@/types/community';
 
+// Couleurs issues de lib/palette : une teinte par secteur, stable entre thèmes.
 const SECTORS = [
-  { key: 'vegetal', label: 'Végétal', icon: Sprout, href: '/production', iconColor: 'hsl(var(--success))', iconBg: 'rgba(74,222,128,0.12)' },
-  { key: 'animal', label: 'Animal', icon: Beef, href: '/animal', iconColor: '#FB923C', iconBg: 'rgba(251,146,60,0.12)' },
-  { key: 'halieutique', label: 'Halieutique', icon: Fish, href: '/halieutique', iconColor: '#22D3EE', iconBg: 'rgba(34,211,238,0.12)' },
-  { key: 'forestier', label: 'Forestier', icon: TreePine, href: '/forestier', iconColor: 'hsl(var(--success))', iconBg: 'rgba(134,239,172,0.12)' },
+  { key: 'vegetal', label: 'Végétal', icon: Sprout, href: '/production', iconColor: SECTOR_COLORS.vegetal.color, iconBg: rgba(SECTOR_COLORS.vegetal.rgb, 0.12) },
+  { key: 'animal', label: 'Animal', icon: Beef, href: '/animal', iconColor: SECTOR_COLORS.animal.color, iconBg: rgba(SECTOR_COLORS.animal.rgb, 0.12) },
+  { key: 'halieutique', label: 'Halieutique', icon: Fish, href: '/halieutique', iconColor: SECTOR_COLORS.halieutique.color, iconBg: rgba(SECTOR_COLORS.halieutique.rgb, 0.12) },
+  { key: 'forestier', label: 'Forestier', icon: TreePine, href: '/forestier', iconColor: SECTOR_COLORS.forestier.color, iconBg: rgba(SECTOR_COLORS.forestier.rgb, 0.12) },
 ] as const;
 
 const FOOTER_LINKS = [
-  { icon: BarChart3, label: 'Analyses disponibles', value: 'Indicateurs', href: '/indicators', iconColor: '#A78BFA', iconBg: 'rgba(167,139,250,0.12)' },
-  { icon: TrendingUp, label: 'Modèles prédictifs', value: 'Prédictions IA', href: '/predictions', iconColor: 'hsl(var(--accent))', iconBg: 'rgba(96,165,250,0.12)' },
-  { icon: Bell, label: 'Gestion des alertes', value: 'Alertes', href: '/alerts', iconColor: 'hsl(var(--destructive))', iconBg: 'rgba(248,113,113,0.12)' },
+  { icon: BarChart3, label: 'Analyses disponibles', value: 'Indicateurs', href: '/indicators', iconColor: CHART_ACCENTS.yield, iconBg: hexAlpha(CHART_ACCENTS.yield, 0.12) },
+  { icon: TrendingUp, label: 'Modèles prédictifs', value: 'Prédictions IA', href: '/predictions', iconColor: 'hsl(var(--accent))', iconBg: hexAlpha(KPI_GLOW.info, 0.12) },
+  { icon: Bell, label: 'Gestion des alertes', value: 'Alertes', href: '/alerts', iconColor: 'hsl(var(--destructive))', iconBg: hexAlpha(KPI_GLOW.danger, 0.12) },
 ] as const;
 
 interface WeeklySummary {
@@ -55,17 +57,8 @@ const ACTIVITY_ICONS: Record<string, typeof MessageSquare> = {
   post_bookmarked: MessageSquare,
 };
 
-const ACTIVITY_COLORS: Record<string, string> = {
-  post_created: '#60A5FA',
-  post_liked: '#34D399',
-  post_commented: '#F59E0B',
-  post_shared: '#A78BFA',
-  member_joined: '#34D399',
-  member_promoted: '#A78BFA',
-  poll_voted: '#F59E0B',
-  event_joined: '#60A5FA',
-  post_bookmarked: '#F87171',
-};
+/** Teinte par action, lue dans la palette (repli neutre pour un type inconnu). */
+const activityColor = (action: string): string => eventColor(action);
 
 /**
  * Le backend renvoie `{ activity: [...], total, limit, offset }` avec des items
@@ -394,7 +387,7 @@ export function DashboardOverview() {
               <div className="divide-y divide-border/10">
                 {activity.slice(0, 6).map((item) => {
                   const Icon = ACTIVITY_ICONS[item.type] || MessageSquare;
-                  const color = ACTIVITY_COLORS[item.type] || '#60A5FA';
+                  const color = activityColor(item.type);
                   const actionLabel =
                     item.type === 'post_created' ? 'a publié dans' :
                     item.type === 'post_liked' ? 'a aimé' :

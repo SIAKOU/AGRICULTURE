@@ -1,5 +1,7 @@
 'use client';
 
+import { CHART_SERIES } from '@/lib/palette';
+
 import { useMemo } from 'react';
 import {
   BarChart,
@@ -20,13 +22,15 @@ import type { ActorRow } from '@/components/actors/actor-card';
 // CONSTANTS
 // ============================================================================
 
+// Séries lues dans lib/palette : Recharts écrit des attributs SVG, où une
+// variable CSS ne se résout pas.
 const CHART_COLORS = [
-  '#16A34A',
-  '#D97706',
-  '#0891B2',
+  CHART_SERIES[0],
+  CHART_SERIES[1],
+  CHART_SERIES[2],
   '#92400E',
-  '#7C3AED',
-  '#DC2626',
+  CHART_SERIES[3],
+  CHART_SERIES[4],
 ];
 
 // ============================================================================

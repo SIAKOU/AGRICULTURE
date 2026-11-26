@@ -1,4 +1,10 @@
 import { SECTOR_COLORS, SECTOR_EMOJIS } from './utils';
+import {
+  CHART_ACCENTS,
+  PASSWORD_STRENGTH_COLORS,
+  SEVERITY_COLORS,
+  SECTOR_CHART_COLORS,
+} from './palette';
 
 // ============================================================================
 // SECTION 1: TYPES & INTERFACES
@@ -61,11 +67,11 @@ export const MAP_MARKER_COLORS: Record<MapMarkerType, string> = {
   forestier: SECTOR_COLORS.forestier,
   minier: SECTOR_COLORS.minier,
   industriel: SECTOR_COLORS.industriel,
-  weather: '#06B6D4',
-  market: '#8B5CF6',
-  alert: '#DC2626',
-  user: '#3B82F6',
-  default: '#6B7280',
+  weather: CHART_ACCENTS.precipitation,
+  market: CHART_ACCENTS.yield,
+  alert: SEVERITY_COLORS.emergency,
+  user: SEVERITY_COLORS.info,
+  default: SECTOR_CHART_COLORS.minier,
 };
 
 /**
@@ -110,9 +116,9 @@ export const MAP_MARKER_STYLES: Record<MapMarkerType, MarkerStyle> = {
  * Cluster color thresholds.
  */
 export const MAP_CLUSTER_COLORS: Record<ClusterSize, string> = {
-  small: '#22C55E',   // 2-9 markers
-  medium: '#EAB308',  // 10-49 markers
-  large: '#F97316',   // 50-99 markers
+  small: PASSWORD_STRENGTH_COLORS[3],   // 2-9 markers
+  medium: SEVERITY_COLORS.warning,  // 10-49 markers
+  large: SEVERITY_COLORS.critical,   // 50-99 markers
   xlarge: '#DC2626',  // 100+ markers
 };
 
