@@ -300,3 +300,35 @@ pour que le rapport reste exploitable.
 
 État actuel : **0 défaut bloquant**, 4 avis (3 pages légales statiques, 1 valeur
 initiale de formulaire).
+
+
+## 10. Intégration continue et protection des branches
+
+Le dépôt distant est organisé en quatre branches (`main`, `frontend`, `backend`,
+`docs`). Deux conséquences ont dû être traitées :
+
+1. **Les scripts de contrôle ont besoin des deux côtés du contrat.** Le travail
+   `contract` récupère donc trois branches (`docs` à la racine, `frontend` et
+   `backend` dans des dossiers temporaires) puis reconstitue l'arborescence
+   attendue (`frontend/`, `backend/`) avant de lancer les deux vérifications.
+2. **Un workflow n'existe que sur la branche où il est commité.** Le fichier
+   `.github/workflows/ci.yml` est donc présent sur les quatre branches ; les
+   événements `push` en déclenchent une exécution partout, `pull_request` protège
+   les fusions vers `main`.
+
+### Travaux
+
+| Travail | Outils | Ce qu'il prouve |
+| --- | --- | --- |
+| `contract` | Python 3.12, `check-api-contract.py`, `audit-frontend-data.py` | aucune route appelée n'est absente, aucune statistique n'est inventée |
+| `frontend` | Node 20, `npm ci`, `tsc --noEmit`, `npm test`, `npm run build` | typage strict, tests au vert, build d'export statique complet (présence de `index.html` et `dashboard.html`) |
+| `backend` | Python 3.12, `compileall`, analyse AST | modules compilables, 25 routeurs parsables, migrations Alembic avec une seule tête et sans parent manquant |
+
+### Protection
+
+Les quatre branches exigent ces trois vérifications (`strict: true`), interdisent
+le force-push et la suppression, et la `main` exige en plus la résolution des
+conversations avant fusion.
+
+Première exécution : **3 travaux au vert**, 1 min 46 s à 2 min 22 s selon la
+branche (le travail frontend domine : installation et build).
