@@ -332,3 +332,52 @@ conversations avant fusion.
 
 Première exécution : **3 travaux au vert**, 1 min 46 s à 2 min 22 s selon la
 branche (le travail frontend domine : installation et build).
+
+
+## 11. Mise en production du 26/11 : les douze causes d'échec
+
+Le déploiement a d'abord échoué en cascade. Chaque cause a été isolée par une
+observation, pas par une supposition.
+
+### Côté poste de travail
+
+| Symptôme | Cause | Correctif |
+| --- | --- | --- |
+| `$'': command not found` | scripts en CRLF lancés par WSL | conversion LF + `bash -n` sur les 6 scripts |
+| `&&` refusé | commande collée dans PowerShell 5.1 | commandes Git Bash fournies en remplacement |
+| `ftps://` injoignable | lftp bascule sur le port 990 (FTPS implicite) | `ftp://` + `set ftp:ssl-force yes` sur le port 21 |
+| `530 Login authentication failed` | mot de passe contenant `#`, pris pour un commentaire par `lftp -u` | identifiants écrits dans un script lftp temporaire en 600 |
+| `source: ... No such file or directory` | ce build Windows de lftp n'ouvre pas un chemin absolu avec `-f` | exécution depuis le dossier du script, chemin relatif |
+| `mirror: ... No such file or directory` | lftp ne résout pas les chemins MSYS `/s/...` | chemins relatifs calculés avec `realpath --relative-to` |
+| `Invalid preceding regular expression` | `--exclude *.pyc` (glob) au lieu d'une regex | `--exclude \.pyc$` |
+| `python-multipart` / `fastapi[all]` | épingles incompatibles | extras choisis explicitement, `python-multipart==0.0.20` |
+| `Failed to build 'blis'` | `spacy` sans wheel Python 3.12 Windows | pile ML sortie vers `requirements-ml.txt` (aucun import dans le code) |
+| `Failed to build 'ecdsa'` | 0.18 sans wheel | `ecdsa==0.19.1` |
+| `NameError: get_db` | `market_prices.py` utilisait un import absent | `from config.database import get_db` |
+| `EBUSY ... rmdir out` | un serveur de test servait `out/` | arrêt des serveurs avant build |
+
+### Côté serveur
+
+| Symptôme | Cause | Correctif |
+| --- | --- | --- |
+| site figé sur l'ancienne version | `REMOTE_ROOT` pointait sur `/agriintel360.lsgrouptogo.com`, dossier jamais servi | racine FTP = `/home/c2606883c/public_html/agriintel360` → backend dans `/api` |
+| `404` sur toutes les routes API | `proxy-api.php` retirait le préfixe `/api` | chemin transmis tel quel, cohérent avec `ws-tunnel.php` |
+| code neuf ignoré | `mirror` comparait taille et date, fichiers de même taille non renvoyés | `--ignore-time` |
+| ancien code malgré fichiers neufs | `.pyc` en cache de juillet | purge `__pycache__` + redémarrage |
+| `Multiple head revisions` | `010_add_geo_divisions.py` resté d'un déploiement précédent | suppression du fichier orphelin |
+| migration 008 en échec | identifiant de 37 caractères > `alembic_version.version_num(32)` | révision renommée `008` |
+| admin impossible à créer | `duplicate key users_username_key` : compte `admin` existant avec un autre e-mail | `admin_seed` cherche aussi par nom d'utilisateur et met l'e-mail à jour |
+| 403 sur tout le site | `.htaccess` du dépôt refusé par Apache | `.htaccess` plus déployé par défaut (option `AGRI_REPLACE_HTACCESS=true`) |
+| smoke tests en 403 | le middleware CSRF exige `X-Requested-With`, absent des `curl` de test | en-tête ajouté aux tests F3/F8 |
+
+### Résultat final
+
+```
+F1 Frontend statique  ✅ 200      F5 Email / SMTP     ✅ OK
+F2 API health         ✅ OK       F6 WebSocket        ⚠️ incertain
+F3 Auth endpoint      ✅ 401      F7 Routes branchées ✅ 7/7
+F4 Base de données    ✅ OK       F8 Parcours connecté ✅ 3/3
+RÉSULTAT : 7 OK | 0 ÉCHEC | 1 AVERT
+```
+
+Le build servi est identique au build local (même empreinte MD5 sur `index.html`).

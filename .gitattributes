@@ -1,0 +1,8 @@
+# Les scripts shell et les fichiers de configuration Apache/lftp doivent rester
+# en LF : un checkout Windows les convertissait en CRLF, et bash (WSL comme Git
+# Bash) échouait sur `$'\r': command not found` avant même la première ligne.
+*.sh            text eol=lf
+*.lftp          text eol=lf
+*.php           text eol=lf
+.gitattributes  text eol=lf
+.htaccess       text eol=lf
