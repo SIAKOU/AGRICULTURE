@@ -92,6 +92,25 @@ function HexCanvas({ reduced }: { reduced: boolean }) {
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
+    // Canvas ne résout pas `var()` : on lit le jeton une fois et on recompose
+    // la couleur en HSL, pour que le vignettage suive le thème clair ou sombre.
+    // La lecture se fait sur le panneau, pas sur documentElement : le composant
+    // est enveloppé d'un conteneur `.dark`, et les propriétés personnalisées
+    // s'héritent. Les lire à la racine renverrait le thème global (clair) et
+    // peindrait un voile beige sur un panneau sombre.
+    const scope = (canvas.parentElement ?? document.documentElement) as HTMLElement;
+    const readBackground = () => {
+      const raw = getComputedStyle(scope).getPropertyValue('--background').trim();
+      const triplets = raw || '150 25% 6%';
+      return (alpha: number) => `hsl(${triplets} / ${alpha})`;
+    };
+    let bg = readBackground();
+    const media = window.matchMedia('(prefers-color-scheme: dark)');
+    const refreshBg = () => {
+      bg = readBackground();
+    };
+    media.addEventListener('change', refreshBg);
+
     const resize = () => {
       const { offsetWidth, offsetHeight } = canvas.parentElement!;
       canvas.width = offsetWidth * devicePixelRatio;
@@ -115,7 +134,7 @@ function HexCanvas({ reduced }: { reduced: boolean }) {
       ctx.clearRect(0, 0, w, h);
 
       // Background fill
-      ctx.fillStyle = 'hsl(var(--background))';
+      ctx.fillStyle = bg(1);
       ctx.fillRect(0, 0, w, h);
 
       for (const cell of cellsRef.current) {
@@ -128,7 +147,7 @@ function HexCanvas({ reduced }: { reduced: boolean }) {
 
         // Hex border
         hexPath(ctx, cx, cy, r - 1);
-        ctx.strokeStyle = 'hsl(var(--secondary) / 0.09)';
+        ctx.strokeStyle = `hsl(${getComputedStyle(scope).getPropertyValue('--secondary').trim() || '38 55% 47%'} / 0.09)`;
         ctx.lineWidth = 0.8;
         ctx.stroke();
 
@@ -155,17 +174,17 @@ function HexCanvas({ reduced }: { reduced: boolean }) {
 
       // Top-bottom gradient vignette so content overlays read well
       const grad = ctx.createLinearGradient(0, 0, 0, h);
-      grad.addColorStop(0, 'hsl(var(--background) / 0.72)');
-      grad.addColorStop(0.35, 'hsl(var(--background) / 0.0)');
-      grad.addColorStop(0.65, 'hsl(var(--background) / 0.0)');
-      grad.addColorStop(1, 'hsl(var(--background) / 0.82)');
+      grad.addColorStop(0, bg(0.72));
+      grad.addColorStop(0.35, bg(0));
+      grad.addColorStop(0.65, bg(0));
+      grad.addColorStop(1, bg(0.82));
       ctx.fillStyle = grad;
       ctx.fillRect(0, 0, w, h);
 
       // Right-edge fade so it bleeds into the right panel
       const rightGrad = ctx.createLinearGradient(w - 80, 0, w, 0);
-      rightGrad.addColorStop(0, 'hsl(var(--background) / 0)');
-      rightGrad.addColorStop(1, 'hsl(var(--background) / 0.95)');
+      rightGrad.addColorStop(0, bg(0));
+      rightGrad.addColorStop(1, bg(0.95));
       ctx.fillStyle = rightGrad;
       ctx.fillRect(0, 0, w, h);
 
@@ -178,14 +197,14 @@ function HexCanvas({ reduced }: { reduced: boolean }) {
       // Static render for prefers-reduced-motion
       const w = canvas.width / devicePixelRatio;
       const h = canvas.height / devicePixelRatio;
-      ctx.fillStyle = 'hsl(var(--background))';
+      ctx.fillStyle = bg(1);
       ctx.fillRect(0, 0, w, h);
       for (const cell of cellsRef.current) {
         hexPath(ctx, cell.cx, cell.cy, cell.r - 1.5);
         ctx.fillStyle = `rgba(22,32,25,${cell.baseAlpha})`;
         ctx.fill();
         hexPath(ctx, cell.cx, cell.cy, cell.r - 1);
-        ctx.strokeStyle = 'hsl(var(--secondary) / 0.09)';
+        ctx.strokeStyle = `hsl(${getComputedStyle(scope).getPropertyValue('--secondary').trim() || '38 55% 47%'} / 0.09)`;
         ctx.lineWidth = 0.8;
         ctx.stroke();
       }
@@ -194,6 +213,7 @@ function HexCanvas({ reduced }: { reduced: boolean }) {
     return () => {
       cancelAnimationFrame(rafRef.current);
       ro.disconnect();
+      media.removeEventListener('change', refreshBg);
     };
   }, [reduced]);
 
