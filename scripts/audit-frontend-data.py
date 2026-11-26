@@ -124,6 +124,43 @@ def audit() -> tuple[list[dict], list[dict]]:
     return blocking, advisories
 
 
+HEX = re.compile(r"#[0-9A-Fa-f]{6}")
+
+
+def audit_palette() -> list[dict]:
+    """Repère une couleur identitaire recopiée dans un composant.
+
+    La palette (`lib/palette.ts`) est la seule source des couleurs de données :
+    secteur, série de graphique, type d'événement, halo d'état. Un composant qui
+    réécrit une de ces valeurs en propre rompt la règle et dérive silencieusement
+    dès qu'on ajuste la palette. Avis, non bloquant : les couleurs propres à un
+    écran (dégradé décoratif) restent légitimes.
+    """
+    palette_file = Path("lib/palette.ts")
+    if not palette_file.exists():
+        return []
+    declared = {h.upper() for h in HEX.findall(palette_file.read_text(encoding="utf-8", errors="replace"))}
+    if not declared:
+        return []
+    duplicated = []
+    for path in iter_files():
+        rel = path.relative_to(ROOT).as_posix()
+        if rel.endswith("lib/palette.ts"):
+            continue
+        for line_no, line in enumerate(path.read_text(encoding="utf-8", errors="replace").splitlines(), 1):
+            for found in HEX.findall(line):
+                if found.upper() in declared:
+                    duplicated.append(
+                        {
+                            "file": rel,
+                            "line": line_no,
+                            "kind": "couleur de la palette recopiée",
+                            "detail": f"{found} — utiliser lib/palette.ts ({line.strip()[:70]})",
+                        }
+                    )
+    return duplicated
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Audit d'intégrité des données frontend")
     parser.add_argument("--strict", action="store_true", help="traiter les avis comme bloquants")
@@ -146,6 +183,13 @@ def main() -> int:
             print(f"      {item['detail']}")
     else:
         print("OK — aucun repli inventé, aucune série synthétique détectée.")
+
+    duplicated = audit_palette()
+    if duplicated:
+        print()
+        print(f"{len(duplicated)} couleur(s) identitaire(s) recopiée(s) hors de lib/palette.ts :")
+        for item in duplicated:
+            print(f"  {item['file']}:{item['line']} — {item['detail']}")
 
     if advisories:
         print()
