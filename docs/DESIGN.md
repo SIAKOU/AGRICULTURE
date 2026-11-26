@@ -178,8 +178,15 @@ seul module :
 | `PASSWORD_STRENGTH_COLORS` | échelle de robustesse d'un mot de passe |
 | `rgba`, `hexAlpha`, `sectorColor`, `sectorRgb` | composition et replis neutres |
 
-Deux variantes coexistent volontairement : la forme jeton (`hsl(var(--…))`) pour
-l'habillage, la forme littérale pour les contextes qui ne résolvent pas `var()`.
+**Une seule teinte par secteur.** La vérification par capture a révélé un défaut
+que la compilation ne pouvait pas voir : « Forestier » apparaissait vert dans les
+cartes du tableau de bord et brun dans la légende du graphique, parce que les deux
+tables portaient des teintes différentes pour la même identité. `SECTOR_COLORS`
+reprend donc exactement les valeurs de `SECTOR_CHART_COLORS` — une identité, une
+couleur, de la carte au graphique.
+
+Deux formes coexistent volontairement : la forme littérale (identité, stable entre
+thèmes) et la forme jeton (`hsl(var(--…))`, habillage seulement).
 
 `__tests__/palette.test.ts` verrouille 9 propriétés : couverture des secteurs,
 repli neutre sur une clé inconnue, absence d'`undefined` quel que soit l'index de
@@ -192,6 +199,21 @@ recopiée dans un composant. État de la migration : **82 recopies restantes**
 (contre 111 avant cette passe), concentrées dans les écrans de contenu —
 `app/(dashboard)/weather`, `markets/compare`, `admin`, `predictions`,
 `hooks/use-calendar`, `lib/export-pdf` (couleurs d'impression, hors thème).
+
+### Vérification visuelle des écrans de contenu
+
+Les quatre écrans les plus modifiés ont été rendus dans un navigateur réel, avec
+une session simulée et une API interceptée, en thème clair et sombre :
+
+| Écran | Variables CSS non résolues | Erreurs JS | Texte rendu |
+| --- | --- | --- | --- |
+| `dashboard` | 0 | 0 | 1 471 car. |
+| `weather` | 0 | 0 | 1 043 car. |
+| `analytics` | 0 | 0 | 1 217 car. |
+| `markets` | 0 | 0 | 848 car. |
+
+C'est cette vérification qui a mis au jour l'incohérence de teinte du secteur
+Forestier, corrigée ensuite et recontrôlée par capture.
 
 ## 9. Repli inventé supprimé sur la carte
 
