@@ -1,5 +1,7 @@
 # AgriIntel360 — Intelligence Agricole pour l'Afrique
 
+[![CI](https://github.com/SIAKOU/AGRICULTURE/actions/workflows/ci.yml/badge.svg)](https://github.com/SIAKOU/AGRICULTURE/actions/workflows/ci.yml)
+
 Plateforme de décision agricole pour l'Afrique de l'Ouest : données de marché et
 d'indicateurs, prédictions, alertes, météo, cartographie 3D, messagerie et
 communautés, pour les filières **végétal, animal, halieutique et forestier**.
@@ -58,6 +60,21 @@ uvicorn src.main:app --reload --port 8000
 Variables d'environnement côté site : `NEXT_PUBLIC_API_URL`, `NEXT_PUBLIC_WS_URL`,
 `NEXT_PUBLIC_API_PREFIX`. Aucune valeur secrète ne porte le préfixe
 `NEXT_PUBLIC_` : ces variables partent dans le bundle client.
+
+## Intégration continue
+
+Le workflow [`.github/workflows/ci.yml`](.github/workflows/ci.yml) tourne sur les
+quatre branches et sur chaque pull request vers `main`. Trois travaux, aucun
+secret, aucune base de données :
+
+| Travail | Ce qu'il vérifie |
+| --- | --- |
+| **Contrat API et intégrité des données** | les 4 branches sont récupérées, puis `check-api-contract.py` et `audit-frontend-data.py` : aucune route fantôme, aucune valeur inventée |
+| **Frontend (types, tests, build)** | `npm ci`, `tsc --noEmit` en mode strict, tests Jest, export statique, présence des pages générées |
+| **Backend (syntaxe et imports)** | `compileall`, analyse AST des 25 routeurs, chaîne des migrations Alembic (une seule tête, aucun parent manquant) |
+
+Les quatre branches sont **protégées** : trois vérifications obligatoires, branche
+à jour exigée avant fusion, force-push et suppression interdits.
 
 ## Qualité et vérifications
 
