@@ -1,0 +1,552 @@
+@import "tailwindcss";
+@plugin "tailwindcss-animate";
+@config "../tailwind.config.js";
+@import "./tokens.css";
+
+/* =============================================================================
+   Thème de base
+   Aucune couleur littérale ici : tout vient de styles/tokens.css.
+============================================================================= */
+
+@layer base {
+  *,
+  *::before,
+  *::after {
+    border-color: hsl(var(--border));
+  }
+
+  html {
+    scroll-behavior: smooth;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+    color-scheme: light;
+  }
+
+  .dark {
+    color-scheme: dark;
+  }
+
+  body {
+    min-height: 100vh;
+    background-color: hsl(var(--background));
+    color: hsl(var(--foreground));
+    font-family: var(--font-inter), 'Inter', system-ui, sans-serif;
+    font-size: 0.9375rem;
+    line-height: 1.6;
+    font-feature-settings: 'cv11', 'ss01';
+  }
+
+  ::selection {
+    background-color: hsl(var(--secondary) / 0.22);
+    color: inherit;
+  }
+
+  main {
+    min-height: 100vh;
+  }
+
+  /* Titres : échelle fluide, une seule source de vérité.
+     Les utilitaires Tailwind (text-lg, …) gardent la priorité. */
+  h1,
+  h2,
+  h3,
+  h4 {
+    font-family: var(--font-inter), 'Inter', sans-serif;
+    font-weight: 600;
+    color: inherit;
+    text-wrap: balance;
+  }
+
+  h1 {
+    font-size: clamp(1.75rem, 1.3rem + 1.6vw, 2.5rem);
+    line-height: 1.15;
+    letter-spacing: -0.02em;
+    font-weight: 700;
+  }
+
+  h2 {
+    font-size: clamp(1.375rem, 1.15rem + 0.9vw, 1.875rem);
+    line-height: 1.25;
+    letter-spacing: -0.015em;
+    font-weight: 600;
+  }
+
+  h3 {
+    font-size: clamp(1.125rem, 1.05rem + 0.35vw, 1.375rem);
+    line-height: 1.35;
+  }
+
+  h4 {
+    font-size: 1.0625rem;
+    line-height: 1.45;
+  }
+
+  p {
+    text-wrap: pretty;
+  }
+
+  /* Chiffres, identifiants, mesures : alignés et lisibles. */
+  .font-data {
+    font-family: var(--font-jetbrains-mono), 'JetBrains Mono', monospace;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.01em;
+  }
+
+  /* Cible de focus unique pour tout le produit. */
+  :focus-visible {
+    outline: 2px solid hsl(var(--ring));
+    outline-offset: 2px;
+    border-radius: var(--radius-sm);
+  }
+
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  ::-webkit-scrollbar-track {
+    background-color: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background-color: hsl(var(--border));
+    border-radius: 9999px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background-color: hsl(var(--muted-foreground) / 0.6);
+  }
+
+  /* Cibles tactiles confortables sur mobile. */
+  @media (pointer: coarse) {
+    button,
+    [role='button'],
+    a[data-tappable='true'] {
+      min-height: 44px;
+    }
+  }
+}
+
+/* =============================================================================
+   Composants : classes réutilisées par plusieurs écrans
+============================================================================= */
+
+@layer components {
+  /* ── Surfaces ─────────────────────────────────────────────────────────────
+     Une seule échelle de cartes : plate (par défaut), élevée (@elevated),
+     puis interactive (@interactive ajoute l'affordance de survol).           */
+
+  .card-base {
+    background-color: hsl(var(--card));
+    color: hsl(var(--card-foreground));
+    border: 1px solid hsl(var(--border));
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-xs);
+    transition:
+      box-shadow var(--dur-base) var(--ease-in-out-soft),
+      border-color var(--dur-base) var(--ease-in-out-soft),
+      transform var(--dur-base) var(--ease-in-out-soft);
+  }
+
+  .card-elevated {
+    box-shadow: var(--shadow-md);
+  }
+
+  .card-hover:hover {
+    box-shadow: var(--shadow-md);
+    border-color: hsl(var(--secondary) / 0.35);
+    transform: translateY(-2px);
+  }
+
+  /* Surface en verre : sert aux panneaux flottants (palette de commandes,
+     tiroirs, encarts de la page publique). */
+  .surface-glass {
+    background-color: hsl(var(--surface-glass));
+    border: 1px solid hsl(var(--border));
+    border-radius: var(--radius-lg);
+    backdrop-filter: blur(18px) saturate(1.1);
+    -webkit-backdrop-filter: blur(18px) saturate(1.1);
+  }
+
+  /* Halos décoratifs (or) — discrets, jamais des blobs colorés. */
+  .halo-gold {
+    background: radial-gradient(
+      ellipse 60% 50% at 50% 45%,
+      hsl(var(--surface-halo)) 0%,
+      transparent 70%
+    );
+  }
+
+  /* ── Page publique : mêmes jetons, échelle plus généreuse ──────────────── */
+  .landing-section {
+    padding-block: clamp(3.5rem, 3rem + 3vw, 6rem);
+  }
+
+  .landing-card,
+  .landing-feature-card {
+    background-color: hsl(var(--card) / 0.82);
+    border: 1px solid hsl(var(--border));
+    border-radius: 1.25rem;
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+  }
+
+  .landing-panel {
+    background-color: hsl(var(--surface-glass));
+    border: 1px solid hsl(var(--border));
+    border-radius: 1.5rem;
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+  }
+
+  .landing-eyebrow {
+    font-size: 0.6875rem;
+    font-weight: 700;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: hsl(var(--secondary));
+  }
+
+  /* ── Sous-secteurs ──────────────────────────────────────────────────────── */
+  .badge-sector {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    border-radius: 9999px;
+    padding: 0.125rem 0.625rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    background-color: hsl(var(--sector-bg) / 0.14);
+    color: hsl(var(--sector-fg));
+    border: 1px solid hsl(var(--sector-bg) / 0.28);
+  }
+
+  .badge-vegetal {
+    --sector-bg: var(--sector-vegetal);
+    --sector-fg: var(--sector-vegetal);
+  }
+  .badge-animal {
+    --sector-bg: var(--sector-animal);
+    --sector-fg: var(--sector-animal);
+  }
+  .badge-halieutique {
+    --sector-bg: var(--sector-halieutique);
+    --sector-fg: var(--sector-halieutique);
+  }
+  .badge-forestier {
+    --sector-bg: var(--sector-forestier);
+    --sector-fg: var(--sector-forestier);
+  }
+
+  /* ── Gravité des alertes ────────────────────────────────────────────────── */
+  .severity-info {
+    --sev: 217 91% 55%;
+  }
+  .severity-warning {
+    --sev: var(--warning);
+  }
+  .severity-critical {
+    --sev: 25 95% 53%;
+  }
+  .severity-emergency {
+    --sev: var(--destructive);
+  }
+
+  .severity-info,
+  .severity-warning,
+  .severity-critical,
+  .severity-emergency {
+    border-left: 4px solid hsl(var(--sev));
+    background-color: hsl(var(--sev) / 0.08);
+  }
+
+  /* ── Messagerie ─────────────────────────────────────────────────────────── */
+  .bubble-user {
+    background-color: hsl(var(--primary) / 0.14);
+    color: hsl(var(--foreground));
+    border: 1px solid hsl(var(--primary) / 0.24);
+  }
+
+  .bubble-bot {
+    background-color: hsl(var(--card));
+    color: hsl(var(--foreground));
+    border: 1px solid hsl(var(--border));
+  }
+
+  /* ── Cartographie ───────────────────────────────────────────────────────── */
+  .map-container {
+    width: 100%;
+    height: 100%;
+    border-radius: var(--radius);
+    overflow: hidden;
+  }
+
+  /* ── Saisie de fichiers ─────────────────────────────────────────────────── */
+  .upload-zone {
+    border: 2px dashed hsl(var(--border));
+    border-radius: var(--radius);
+    padding: 2rem;
+    text-align: center;
+    transition:
+      border-color var(--dur-base) var(--ease-in-out-soft),
+      background-color var(--dur-base) var(--ease-in-out-soft);
+    cursor: pointer;
+  }
+
+  .upload-zone:hover,
+  .upload-zone-active {
+    border-color: hsl(var(--primary));
+    background-color: hsl(var(--primary) / 0.08);
+  }
+
+  /* ── Enregistrement audio ───────────────────────────────────────────────── */
+  .waveform-bar {
+    background-color: hsl(var(--primary));
+    border-radius: 9999px;
+    transition: height 75ms var(--ease-out-expo);
+  }
+}
+
+/* =============================================================================
+   Utilitaires (mouvement, gabarits, cas particuliers)
+============================================================================= */
+
+@layer utilities {
+  /* Hauteurs et largeurs de structure : pilotées par les jetons. */
+  .h-header {
+    height: var(--header-height);
+  }
+  .pt-header {
+    padding-top: var(--header-height);
+  }
+  .w-sidebar {
+    width: var(--sidebar-width);
+  }
+  .ml-sidebar {
+    margin-left: var(--sidebar-width);
+  }
+  .max-w-content {
+    max-width: var(--content-width);
+  }
+  .max-w-reading {
+    max-width: var(--reading-width);
+  }
+
+  /* Chiffres clés : jamais de veuves sur les séparateurs de milliers. */
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Texte en dégradé de marque (titres du hero uniquement). */
+  .text-gradient-brand {
+    background-image: linear-gradient(
+      100deg,
+      hsl(var(--secondary)) 0%,
+      hsl(var(--accent)) 60%,
+      hsl(var(--secondary)) 100%
+    );
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
+  @keyframes float {
+    0%,
+    100% {
+      transform: translateY(0) scale(1);
+    }
+    50% {
+      transform: translateY(-20px) scale(1.02);
+    }
+  }
+  @keyframes float-reverse {
+    0%,
+    100% {
+      transform: translateY(0) scale(0.98);
+    }
+    50% {
+      transform: translateY(15px) scale(1);
+    }
+  }
+  @keyframes pulse-glow {
+    0%,
+    100% {
+      opacity: 0.4;
+      transform: scale(1);
+    }
+    50% {
+      opacity: 0.8;
+      transform: scale(1.05);
+    }
+  }
+  @keyframes ripple {
+    0% {
+      transform: scale(0);
+      opacity: 0.5;
+    }
+    100% {
+      transform: scale(40);
+      opacity: 0;
+    }
+  }
+
+  .animate-float-slow {
+    animation: float 8s var(--ease-in-out-soft) infinite;
+  }
+  .animate-float-reverse {
+    animation: float-reverse 10s var(--ease-in-out-soft) infinite;
+  }
+  .animate-pulse-glow {
+    animation: pulse-glow 4s var(--ease-in-out-soft) infinite;
+  }
+  .animate-ripple {
+    animation: ripple 0.6s var(--ease-out-expo) forwards;
+  }
+
+  /* Entrées de scène : une seule courbe pour tout le produit. */
+  @keyframes land-fade-up {
+    from {
+      opacity: 0;
+      transform: translateY(16px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+  .land-fade-up {
+    animation: land-fade-up var(--dur-slow) var(--ease-out-expo) both;
+  }
+
+  @keyframes animate-in {
+    from {
+      opacity: 0;
+      transform: translateY(8px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+  .animate-in {
+    animation: animate-in var(--dur-base) var(--ease-out-expo) both;
+  }
+
+  /* Accessibilité : mouvement réduit et contrastes renforcés. */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+
+  @media (prefers-contrast: more) {
+    :root,
+    .dark {
+      --border: var(--foreground);
+      --ring: var(--foreground);
+      --muted-foreground: var(--foreground);
+    }
+    .card-base {
+      border-width: 2px;
+    }
+    :focus-visible {
+      outline-width: 3px;
+      outline-offset: 3px;
+    }
+  }
+
+  @media (forced-colors: active) {
+    .card-base,
+    .landing-card,
+    .landing-feature-card,
+    .surface-glass {
+      border: 2px solid CanvasText;
+    }
+    button:focus-visible,
+    a:focus-visible {
+      outline: 3px solid Highlight;
+    }
+  }
+}
+
+/* =============================================================================
+   Hors couche : polices décoratives et intégrations tierces
+============================================================================= */
+
+.font-display {
+  font-family: var(--font-display), Georgia, 'Palatino Linotype', 'Book Antiqua', serif;
+  font-feature-settings: 'liga', 'kern';
+}
+
+/* Grille « bento » de la page publique. */
+.landing-bento {
+  display: grid;
+  grid-template-columns: 1.6fr 1fr 1fr;
+  gap: 14px;
+}
+@media (max-width: 1024px) {
+  .landing-bento {
+    grid-template-columns: 1fr 1fr;
+  }
+  .landing-bento-featured {
+    grid-row: auto !important;
+    grid-column: 1 / -1;
+  }
+}
+@media (max-width: 640px) {
+  .landing-bento {
+    grid-template-columns: 1fr;
+  }
+  .landing-bento-full {
+    grid-column: auto !important;
+  }
+}
+
+/* MapLibre */
+.maplibregl-map {
+  font-family: var(--font-inter), Inter, sans-serif !important;
+}
+.maplibregl-popup-content {
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-lg);
+  padding: 0;
+  overflow: hidden;
+}
+.maplibregl-ctrl-group {
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-sm);
+}
+
+/* Recharts */
+.recharts-tooltip-wrapper {
+  outline: none !important;
+}
+.recharts-default-tooltip {
+  background-color: hsl(var(--card)) !important;
+  border: 1px solid hsl(var(--border)) !important;
+  border-radius: var(--radius-sm) !important;
+  box-shadow: var(--shadow-md) !important;
+}
+
+/* Voile du héros : garantit la lisibilité du titre sur la photo, quel que soit
+   le thème. Une seule définition, utilisée par la page publique. */
+.hero-scrim {
+  background-image:
+    radial-gradient(
+      ellipse 78% 62% at 50% 48%,
+      hsl(var(--background) / 0.92) 0%,
+      hsl(var(--background) / 0.55) 58%,
+      transparent 80%
+    ),
+    linear-gradient(
+      180deg,
+      hsl(var(--background)) 0%,
+      hsl(var(--background) / 0.35) 26%,
+      transparent 52%,
+      hsl(var(--background) / 0.7) 82%,
+      hsl(var(--background)) 100%
+    );
+}
