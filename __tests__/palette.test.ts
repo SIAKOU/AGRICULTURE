@@ -30,7 +30,9 @@ describe('palette identitaire', () => {
 
   it('retombe sur un gris neutre pour un secteur inconnu', () => {
     expect(sectorColor('cacao')).toBe('hsl(var(--muted-foreground))');
-    expect(sectorRgb('cacao')).toBe('125,148,134');
+    // Le repli reprend le gris neutre de la palette (#6B7280), pas une teinte
+    // arbitraire : deux écrans en échec doivent afficher la même couleur.
+    expect(sectorRgb('cacao')).toBe('107,114,128');
   });
 
   it('ne produit jamais undefined, quel que soit l’index de série', () => {

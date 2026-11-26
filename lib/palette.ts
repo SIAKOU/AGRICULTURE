@@ -15,12 +15,33 @@
  * porter un code hexadécimal en propre.
  */
 
-/** Couleurs de secteur : chacune reste reconnaissable d'un écran à l'autre. */
+/** Triplets « r,g,b » d'une couleur hexadécimale, sans passer par le DOM. */
+function hexRgb(hex: string): string {
+  const clean = hex.replace('#', '');
+  const full =
+    clean.length === 3
+      ? clean
+          .split('')
+          .map((c) => c + c)
+          .join('')
+      : clean;
+  return [0, 2, 4].map((i) => parseInt(full.slice(i, i + 2), 16)).join(',');
+}
+
+/**
+ * Couleurs de secteur : une seule teinte par secteur, partagée par les cartes
+ * du tableau de bord et les séries de graphiques. Deux variantes de teintes
+ * différentes (un vert ici, un brun là) donnaient deux identités au même
+ * secteur — « Forestier » apparaissait vert en carte et brun en légende.
+ *
+ * La forme littérale est retenue : ces teintes identifient une catégorie et ne
+ * doivent pas changer avec le thème.
+ */
 export const SECTOR_COLORS = {
-  vegetal: { color: 'hsl(var(--success))', rgb: '74,222,128' },
-  animal: { color: '#FB923C', rgb: '251,146,60' },
-  halieutique: { color: '#22D3EE', rgb: '34,211,238' },
-  forestier: { color: 'hsl(var(--success))', rgb: '134,239,172' },
+  vegetal: { color: '#16A34A', rgb: '22,163,74' },
+  animal: { color: '#D97706', rgb: '217,119,6' },
+  halieutique: { color: '#0891B2', rgb: '8,145,178' },
+  forestier: { color: '#92400E', rgb: '146,64,14' },
 } as const;
 
 export type SectorKey = keyof typeof SECTOR_COLORS;
@@ -119,7 +140,8 @@ export function eventColor(key: string): string {
 
 /** Triplets de secteur, pour les fonds translucides. */
 export function sectorRgb(key: string): string {
-  return (SECTOR_COLORS as Record<string, { rgb: string }>)[key]?.rgb ?? '125,148,134';
+  const entry = (SECTOR_COLORS as Record<string, { rgb: string }>)[key];
+  return entry?.rgb ?? hexRgb(SECTOR_CHART_COLORS.minier);
 }
 
 /**
@@ -129,10 +151,10 @@ export function sectorRgb(key: string): string {
  * présents dans le référentiel métier mais absents du tableau de bord.
  */
 export const SECTOR_CHART_COLORS = {
-  vegetal: '#16A34A',
-  animal: '#D97706',
-  halieutique: '#0891B2',
-  forestier: '#92400E',
+  vegetal: SECTOR_COLORS.vegetal.color,
+  animal: SECTOR_COLORS.animal.color,
+  halieutique: SECTOR_COLORS.halieutique.color,
+  forestier: SECTOR_COLORS.forestier.color,
   minier: '#6B7280',
   industriel: '#4F46E5',
 } as const;
