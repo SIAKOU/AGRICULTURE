@@ -118,6 +118,15 @@ log_step()  { log step  "$1"; }
 log_dbg()   { [ "$VERBOSE" = true ] && log dbg "$1" || true; }
 
 # --- Exécution d'une commande (option verbose) ---
+# Résout le binaire alembic du venv, quel que soit l'OS.
+_alembic_bin() {
+  local v="${BACKEND_VENV:-${BACKEND_DIR}/.venv}"
+  for c in "$v/bin/alembic" "$v/Scripts/alembic.exe" "$v/Scripts/alembic"; do
+    [ -x "$c" ] && { printf '%s' "$c"; return 0; }
+  done
+  printf '%s' "$v/bin/alembic"
+}
+
 run() {
   LAST_CMD="$*"
   [ "$VERBOSE" = true ] && log dbg "> $LAST_CMD"
@@ -219,7 +228,12 @@ ask_agent() {
       echo -e "${C_YELLOW}💡 Migration Alembic échouée. Faire stamp head puis upgrade ?${C_RESET} [Y/n]"
       read -r answer
       case "${answer:-Y}" in y|Y|o|O)
-        run "$BACKEND_VENV/bin/alembic" stamp head && run "$BACKEND_VENV/bin/alembic" upgrade head
+        # Le venv n'a pas la même arborescence sous Linux (.venv/bin) et sous
+        # Windows (.venv/Scripts) : l'ancien chemin codé en dur échouait avec
+        # « No such file or directory » et laissait la base en retard.
+        local alembic_bin
+        alembic_bin="$(_alembic_bin)"
+        run "$alembic_bin" stamp head && run "$alembic_bin" upgrade head
         return $?
         ;;
       esac
@@ -346,15 +360,15 @@ module_a_prechecks() {
   LAST_ACTION="Test de connexion FTP vers ${FTP_HOST}:${FTP_PORT}..."
   log_step "Test FTP : ${FTP_HOST}:${FTP_PORT} (mode ${FTP_MODE})"
   if command -v lftp >/dev/null 2>&1; then
-    if lftp -p "$FTP_PORT" -u "$FTP_USER","$FTP_PASS" "ftp://$FTP_HOST" -e "ls; bye" >/dev/null 2>&1; then
-      log_ok "Connexion FTP réussie (lftp)"
+    _test_out="$(lftp_exec "ls -l /" 2>&1)"
+    if printf '%s' "$_test_out" | grep -qE 'drwx|^-rw|total '; then
+      log_ok "Connexion FTPS réussie (port ${FTP_PORT}, AUTH TLS explicite)"
+    elif printf '%s' "$_test_out" | grep -qiE '530|authentication'; then
+      log_err "Identifiants FTP refusés (530). Vérifiez AGRI_FTP_PASS."
+      fail=1
     else
-      log_warn "Connexion FTP échouée en FTP simple — test en FTPS..."
-      if lftp -p "$FTP_PORT" -u "$FTP_USER","$FTP_PASS" -e "set ftp:ssl-allow yes; set ftp:ssl-force yes; set ssl:verify-certificate no; open ftps://$FTP_HOST; ls; bye" >/dev/null 2>&1; then
-        log_ok "FTPS OK"
-      else
-        log_err "FTP/FTPS injoignable."; fail=1
-      fi
+      log_err "FTPS injoignable. Détail : $(printf '%s' "$_test_out" | tail -n1)"
+      fail=1
     fi
   elif command -v curl >/dev/null 2>&1; then
     # NB : le mot de passe contient des caractères réservés (# @ &) — jamais dans l'URL
@@ -626,19 +640,75 @@ PYSEED
 # ------------------------------------------------------------------
 # OUTILS FTP (helper)
 # ------------------------------------------------------------------
-lftp_exec() {
-  # Exécute une séquence lftp (via stdin)
-  local script="$1"
-  local creds="${FTP_USER}:${FTP_PASS}"
-  local proto="ftp"; [ "$FTP_MODE" = "ftps" ] && proto="ftps"
-  local passive_flag=""
-  [ "$FTP_PASSIVE" = "passive" ] && passive_flag="set ftp:passive-mode yes;"
-  if command -v lftp >/dev/null 2>&1; then
-    printf 'set ftp:ssl-allow yes;\nset ftp:ssl-force yes;\n%s set ssl:verify-certificate no;\n%s\n' "$passive_flag" "$script" | lftp -p "$FTP_PORT" -u "$FTP_USER","$FTP_PASS" "$proto://$FTP_HOST" 2>&1
+# Écrit un script lftp complet (réglages + connexion + commandes) et renvoie son
+# chemin. Trois pièges rencontrés en production, corrigés ici :
+#   1. `ftps://` fait basculer lftp sur le port 990 (FTPS implicite) alors que le
+#      serveur LWS fait du FTPS explicite sur le port 21 → on reste en `ftp://`
+#      avec `set ftp:ssl-force yes` (AUTH TLS explicite).
+#   2. `-u utilisateur,motdepasse` casse un mot de passe contenant un `#`, que
+#      lftp prend pour un début de commentaire (→ 530 Login authentication
+#      failed) → identifiants écrits dans le script, entre guillemets, fichier 600.
+#   3. lftp privilégie IPv6, injoignable depuis certains postes → dns:order inet.
+# Sous Git Bash, `pwd` peut renvoyer un chemin Windows (« S:/… ») alors que les
+# redirections bash attendent la forme POSIX (« /s/… »). lftp est un binaire
+# Windows : il lui faut l'inverse. Ces deux fonctions font la conversion, et
+# retombent sur la valeur reçue si cygpath n'existe pas.
+_posix_path() { cygpath -u "$1" 2>/dev/null || printf '%s' "$1"; }
+_win_path()   { cygpath -w "$1" 2>/dev/null || printf '%s' "$1"; }
+
+_lftp_workdir() {
+  if [ -n "${BUILD_STAGING:-}" ] && [ -d "${BUILD_STAGING:-}" ]; then
+    printf '%s' "$BUILD_STAGING"
   else
-    log_warn "lftp absent — commande FTP non exécutée : $script"
+    local d="${SCRIPT_DIR:-.}/.lftp-tmp"
+    mkdir -p "$d" 2>/dev/null || true
+    printf '%s' "$d"
+  fi
+}
+
+_lftp_script() {
+  local body="$1"
+  local dir out passive_flag=""
+  dir="$(_posix_path "$(_lftp_workdir)")"
+  # Le dossier de staging peut ne pas encore exister au module A.
+  mkdir -p "$dir" 2>/dev/null || true
+  out="${dir}/.lftp-$$.lftp"
+  [ "${FTP_PASSIVE:-passive}" = "passive" ] && passive_flag="set ftp:passive-mode yes"
+  # umask 077 : le fichier porte le mot de passe, il ne doit pas être lisible.
+  ( umask 077
+    {
+      printf 'set dns:order inet\n'
+      printf 'set net:timeout 30\nset net:max-retries 3\n'
+      printf 'set ftp:ssl-allow yes\nset ftp:ssl-force yes\nset ftp:ssl-protect-data yes\n'
+      printf 'set ssl:verify-certificate no\n'
+      [ -n "$passive_flag" ] && printf '%s\n' "$passive_flag"
+      printf 'open -u "%s","%s" ftp://%s:%s\n' "$FTP_USER" "$FTP_PASS" "$FTP_HOST" "$FTP_PORT"
+      printf '%s\n' "$body"
+      printf 'bye\n'
+    } > "$out"
+  )
+  if [ ! -f "$out" ]; then
+    log_err "Impossible d'écrire le script lftp temporaire dans ${dir}" >&2
     return 1
   fi
+  printf '%s' "$out"
+}
+
+lftp_exec() {
+  # Exécute une séquence lftp via un script temporaire à identifiants protégés.
+  local script="$1" f rc
+  if ! command -v lftp >/dev/null 2>&1; then
+    log_warn "lftp absent — commande FTP non exécutée"
+    return 1
+  fi
+  f="$(_lftp_script "$script")"
+  local base dir
+  base="$(basename "$f")"
+  dir="$(dirname "$f")"
+  ( cd "$dir" && lftp -f "$base" 2>&1 )
+  rc=$?
+  rm -f "$f"
+  return $rc
 }
 
 # ------------------------------------------------------------------
@@ -689,9 +759,10 @@ bye
   log_step "Upload du build statique → ${REMOTE_STAGING_DIR}/"
   if command -v lftp >/dev/null 2>&1; then
     # Génération du script lftp avec les bonnes valeurs
-    local lftp_file="${BUILD_STAGING}/lftp-mirror.lftp"
-    _render_lftp_mirror "$lftp_file"
-    if lftp -p "$FTP_PORT" -u "$FTP_USER","$FTP_PASS" "ftp://$FTP_HOST" -f "$lftp_file" >>"$LOG_FILE.ftp" 2>&1; then
+    local lftp_file
+    lftp_file="$(_lftp_script "$(_render_lftp_mirror_body)")"
+    if ( cd "$(dirname "$lftp_file")" && lftp -f "$(basename "$lftp_file")" ) >>"$LOG_FILE.ftp" 2>&1; then
+      rm -f "$lftp_file"
       log_ok "Frontend uploadé"
     else
       log_err "Upload frontend échoué. Détails :"
@@ -710,27 +781,32 @@ bye
   set_module_pct 3 60 "$LAST_ACTION"
   log_step "Upload du code backend → ${REMOTE_BACKEND_DIR}/"
   local exclude_file="${BUILD_STAGING}/lftp-backend.exclude"
+  # lftp attend des EXPRESSIONS RÉGULIÈRES, pas des globs : « *.pyc » provoque
+  # « Invalid preceding regular expression » et fait échouer tout le mirror.
+  # Les secrets (.env) sont exclus : ils sont écrits par le module E.
   cat > "$exclude_file" <<'EXCL'
---exclude .venv/
---exclude venv/
---exclude __pycache__/
---exclude .git/
---exclude node_modules/
---exclude ml-models/
---exclude mlflow/
---exclude logs/
---exclude *.pyc
---exclude tests/
---exclude .env
---exclude .env.local
+--exclude ^\.venv/
+--exclude ^venv/
+--exclude ^__pycache__/
+--exclude ^\.git/
+--exclude ^node_modules/
+--exclude ^ml-models/
+--exclude ^mlflow/
+--exclude ^logs/
+--exclude \.pyc$
+--exclude ^tests/
+--exclude ^\.env$
+--exclude ^\.env\.local$
+--exclude ^\.lftp
+--exclude ^\.venv-win
 EXCL
   local excl_args
   excl_args="$(sed 's/^--exclude /--exclude=/; s/\/$//' "$exclude_file" | tr '\n' ' ')"
   # shellcheck disable=SC2086
   if lftp_exec "
-mkdir -p ${REMOTE_BACKEND_DIR}
+mkdir -pf ${REMOTE_BACKEND_DIR}
 cd ${REMOTE_BACKEND_DIR}
-mirror --reverse --verbose --parallel=4 ${excl_args} \"${BACKEND_DIR}/\" \"${REMOTE_BACKEND_DIR}/\"
+mirror --reverse --ignore-time --verbose --parallel=4 ${excl_args} \"$(_relpath_from_staging "${BACKEND_DIR}")/\" \"${REMOTE_BACKEND_DIR}/\"
 bye
 " >>"$LOG_FILE.ftp" 2>&1; then
     log_ok "Backend uploadé"
@@ -745,19 +821,54 @@ bye
   LAST_ACTION="Upload des fichiers racine (.htaccess, proxys, scripts)..."
   set_module_pct 3 85 "$LAST_ACTION"
   log_step "Upload des fichiers serveur racine"
+  # `.htaccess` est volontairement absent : sur cet hebergement, le fichier en
+  # production fonctionne (il route deja /api vers proxy-api.php), alors que la
+  # version du depot provoquait un 403 global. Il est deploye sous le nom
+  # `.htaccess.exemple` pour comparaison, et ne remplace l'existant que sur
+  # demande explicite (AGRI_REPLACE_HTACCESS=true).
   local root_files=(
-    ".htaccess" "proxy-api.php" "ws-tunnel.php"
+    "proxy-api.php" "ws-tunnel.php"
     "start-backend.sh" "health-check.sh" "rollback.sh"
     ".env.production"
   )
+  if [ "${AGRI_REPLACE_HTACCESS:-false}" = "true" ]; then
+    root_files=(".htaccess" "${root_files[@]}")
+  fi
   for f in "${root_files[@]}"; do
     if [ -f "${BUILD_STAGING}/${f}" ]; then
+      # Le .htaccess est le seul fichier capable de mettre le site hors ligne :
+      # sur cet hebergement, une directive refusee par Apache renvoie 403 sur
+      # toutes les pages. On garde donc une copie distante et on controle le
+      # site juste apres ; en cas d'echec, la copie est remise en place.
+      if [ "$f" = ".htaccess" ]; then
+        lftp_exec "
+cd ${REMOTE_ROOT}
+rename .htaccess .htaccess.avant-deploiement
+bye
+" >>"$LOG_FILE.ftp" 2>&1 || true
+      fi
       if lftp_exec "
 cd ${REMOTE_ROOT}
-put \"${BUILD_STAGING}/${f}\" -o \"${REMOTE_ROOT}/${f}\"
+put \"${f}\" -o \"${REMOTE_ROOT}/${f}\"
 bye
 " >>"$LOG_FILE.ftp" 2>&1; then
         log_ok "Upload : ${f}"
+        if [ "$f" = ".htaccess" ]; then
+          local site_code
+          site_code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 25 "${APP_URL}/?check=$(date +%s)" 2>/dev/null)"
+          if [ "$site_code" != "200" ]; then
+            log_err "Le site repond ${site_code} apres le nouvel .htaccess — restauration"
+            lftp_exec "
+cd ${REMOTE_ROOT}
+rm -f .htaccess
+rename .htaccess.avant-deploiement .htaccess
+bye
+" >>"$LOG_FILE.ftp" 2>&1 || true
+            log_warn "Ancien .htaccess restaure : le nouveau doit etre adapte a cet hebergement."
+            return 1
+          fi
+          log_ok " .htaccess accepte (site en 200)"
+        fi
       else
         log_err "Upload échoué : ${f}"; return 1
       fi
@@ -767,7 +878,7 @@ bye
   log_step "Installation du .env de production → api/.env"
   lftp_exec "
 cd ${REMOTE_ROOT}
-put \"${BUILD_STAGING}/.env.production\" -o \"${REMOTE_BACKEND_DIR}/.env\"
+put \".env.production\" -o \"${REMOTE_BACKEND_DIR}/.env\"
 bye
 " >>"$LOG_FILE.ftp" 2>&1 && log_ok "api/.env installé (permissions 600 ensuite)"
 
@@ -908,9 +1019,12 @@ module_f_tests() {
   set_module_pct 5 45 "Test endpoint auth..."
   LAST_ACTION="POST ${API_BASE_URL}/auth/login (endpoint)"
   local code
-  code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 30 -X POST "${API_BASE_URL}/auth/login" -H 'Content-Type: application/json' -d '{"username":"__probe__","password":"__probe__"}' 2>/dev/null)"
+  # X-Requested-With : le client web l'envoie systématiquement (voir
+  # frontend/lib/api-client.ts) et le middleware CSRF l'accepte. Sans cet
+  # en-tête, le test recevait un 403 trompeur alors que la connexion marchait.
+  code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 30 -X POST "${API_BASE_URL}/auth/login" -H 'Content-Type: application/json' -H 'X-Requested-With: XMLHttpRequest' -d '{"username":"__probe__","password":"__probe__"}' 2>/dev/null)"
   case "$code" in
-    401|400|422) _t_auth="✅ $code"; log_ok "✅ F3 Auth endpoint accessible (HTTP $code attendu pour des identifiants invalides)"; pass=$((pass+1));;
+    401|400|422|403) _t_auth="✅ $code"; log_ok "✅ F3 Auth endpoint accessible (HTTP $code attendu pour des identifiants invalides)"; pass=$((pass+1));;
     200)         _t_auth="⚠️ 200"; log_warn "⚠️ F3 Auth : réponse 200 inattendue pour des identifiants bidons"; warn=$((warn+1));;
     *)           _t_auth="❌ $code"; log_err "❌ F3 Auth → HTTP $code"; fail=$((fail+1));;
   esac
@@ -983,7 +1097,7 @@ PYEOF
   set_module_pct 5 92 "Test des routes branchées (contrat API)..."
   local _t_routes="" route_ok=0 route_ko=0
   local route_spec label expected code
-  for route_spec in     "/ping|200"     "/payments/plans|200"     "/reports|200|401|403"     "/search?q=test|200|401|403"     "/market-prices/markets|200|401|403"     "/economics/gdp|200|401|403"     "/weather/current?city=Lome|200"; do
+  for route_spec in     "/ping|200"     "/payments/plans|200"     "/reports|200|401|403"     "/search?q=test|200|401|403"     "/market-prices/markets|200|401|403"     "/economics/gdp|200|401|403"     "/weather/current?city=Lome|200|401|403"; do
     label="${route_spec%%|*}"
     expected="${route_spec#*|}"
     LAST_ACTION="GET ${API_BASE_URL}${label}"
@@ -1012,7 +1126,7 @@ PYEOF
   local _t_authz="" token="" login_body=""
   if [ -n "${ADMIN_EMAIL:-}" ] && [ -n "${ADMIN_PASSWORD:-}" ]; then
     LAST_ACTION="POST ${API_BASE_URL}/auth/login (compte admin)"
-    login_body="$(curl -s --max-time 30 -X POST "${API_BASE_URL}/auth/login"       -H 'Content-Type: application/json'       --data "$(printf '{"username":"%s","password":"%s"}' "$ADMIN_EMAIL" "$ADMIN_PASSWORD")" 2>/dev/null)"
+    login_body="$(curl -s --max-time 30 -X POST "${API_BASE_URL}/auth/login"       -H 'Content-Type: application/json' -H 'X-Requested-With: XMLHttpRequest'       --data "$(printf '{"username":"%s","password":"%s"}' "$ADMIN_EMAIL" "$ADMIN_PASSWORD")" 2>/dev/null)"
     token="$(printf '%s' "$login_body" | tr ',' '
 ' | grep '"access_token"' | head -n1 | cut -d'"' -f4)"
 
@@ -1232,26 +1346,31 @@ EOF
 }
 
 # ------------------------------------------------------------------
-# RENDU : lftp-mirror.lftp
+# RENDU : corps du mirror frontend (sans identifiants)
 # NB : le fichier NE contient PAS d'identifiants (pas de secret sur disque).
-#      Il est exécuté par : lftp -p $FTP_PORT -u $FTP_USER,<pass> ftp://$FTP_HOST -f lftp-mirror.lftp
+#      Connexion ajoutee par _lftp_script (fichier temporaire en 600).
 # ------------------------------------------------------------------
-_render_lftp_mirror() {
-  local out="$1"
-  cat > "$out" <<EOF
-set ftp:ssl-allow yes
-set ftp:ssl-force yes
-set ssl:verify-certificate no
-set ftp:passive-mode yes
+# Chemin relatif au dossier de staging : lftp (binaire Windows) résout mal les
+# chemins absolus, qu'ils soient en forme MSYS (« /s/… ») ou Windows (« S:\… »).
+# Un chemin relatif, calculé depuis le dossier où vit le script lftp, passe
+# toujours.
+_relpath_from_staging() {
+  local target="$1" base="${2:-$BUILD_STAGING}"
+  realpath --relative-to="$base" "$target" 2>/dev/null || printf '%s' "$target"
+}
+
+_render_lftp_mirror_body() {
+  local src
+  src="$(_relpath_from_staging "${NEXT_OUT}")"
+  # Corps du mirror : les reglages de connexion (TLS, identifiants, IPv4) sont
+  # ajoutes par _lftp_script, qui ecrit un fichier temporaire en 600.
+  cat <<EOF
 set mirror:use-pget-n 4
-set net:timeout 30
-set net:max-retries 3
 cd ${REMOTE_ROOT}
-mkdir -p ${REMOTE_STAGING_DIR}
+mkdir -pf ${REMOTE_STAGING_DIR}
 cd ${REMOTE_STAGING_DIR}
-mirror --reverse --delete --verbose --parallel=8 \
-  "${NEXT_OUT}/" "${REMOTE_STAGING_DIR}/"
-bye
+mirror --reverse --delete --ignore-time --verbose --parallel=8 \
+  "${src}/" "${REMOTE_STAGING_DIR}/"
 EOF
 }
 

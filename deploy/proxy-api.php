@@ -16,10 +16,15 @@
 // ---------- Cible backend ----------
 $backend = 'http://127.0.0.1:8001';
 
-// Reconstruction du chemin API : /api/v1/health → /api/v1/health
+// Reconstruction du chemin API : le préfixe EST CONSERVÉ.
+//
+// L'ancienne version retirait « /api » (preg_replace('#^/api#', ...)), ce qui
+// envoyait /api/v1/health vers http://127.0.0.1:8001/v1/health. L'application
+// déclare ses routes sous /api/v1 (settings.API_V1_STR) : toutes les requêtes
+// répondaient donc 404. Le chemin complet est transmis tel quel, et
+// ws-tunnel.php fait déjà de même — les deux proxys sont cohérents.
 $path   = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
-$api    = preg_replace('#^/api#', '', $path); // retire le préfixe /api
-$target = $backend . $api;
+$target = $backend . $path;
 
 // Query string transmise telle quelle
 $qs = isset($_SERVER['QUERY_STRING']) ? $_SERVER['QUERY_STRING'] : '';

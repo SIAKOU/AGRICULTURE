@@ -17,6 +17,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
+from config.database import get_db
 from src.services import external_apis
 from src.services.auth import get_current_verified_user
 from api.models.sql.user import User

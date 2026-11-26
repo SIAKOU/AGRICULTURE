@@ -8,7 +8,7 @@ Revision ID: 008_add_reports_payments_price_alerts
 Revises: 007_add_performance_indexes
 """
 
-revision = '008_add_reports_payments_price_alerts'
+revision = '008'  # 32 caractères max dans alembic_version.version_num
 down_revision = '007_add_performance_indexes'
 branch_labels = None
 depends_on = None

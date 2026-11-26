@@ -26,9 +26,22 @@ async def ensure_default_admin_user() -> None:
             settings.DEFAULT_ADMIN_EMAIL,
         )
 
+        # Le compte peut déjà exister sous le même nom d'utilisateur avec un
+        # autre e-mail (ancienne installation) : sans cette recherche, l'insert
+        # échouait sur « duplicate key value violates unique constraint
+        # users_username_key » et le mot de passe restait celui d'avant.
+        if existing_admin is None:
+            from sqlalchemy import select
+
+            result = await db.execute(
+                select(User).where(User.username == settings.DEFAULT_ADMIN_USERNAME)
+            )
+            existing_admin = result.scalar_one_or_none()
+
         hashed_password = AuthService.hash_password(settings.DEFAULT_ADMIN_PASSWORD)
 
         if existing_admin:
+            existing_admin.email = settings.DEFAULT_ADMIN_EMAIL
             existing_admin.hashed_password = hashed_password
             existing_admin.role = UserRole.ADMIN
             existing_admin.is_active = True

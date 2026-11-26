@@ -51,11 +51,26 @@ FTP_MODE="${AGRI_FTP_MODE:-ftps}"
 FTP_PASSIVE="${AGRI_FTP_PASSIVE:-passive}"
 
 # Répertoire racine distant (relatif à la racine FTP du compte)
-REMOTE_ROOT="/agriintel360.lsgrouptogo.com"
-REMOTE_BACKEND_DIR="${REMOTE_ROOT}/api"
-REMOTE_LOGS_DIR="${REMOTE_ROOT}/logs"
-REMOTE_STAGING_DIR="${REMOTE_ROOT}/_frontend"
-# Dossier "live" réellement servi — identique à la racine du domaine
+#
+# Vérifié sur le serveur LWS : la racine FTP du compte EST la racine web
+# (public_html) — c'est là que vivent .htaccess, _frontend/ et agriintel360/.
+# L'ancienne valeur `/agriintel360.lsgrouptogo.com` désignait un dossier
+# inexistant : chaque déploiement y créait une arborescence que le domaine ne
+# sert pas, d'où un site qui restait sur la version précédente.
+#
+#   /                     → racine web (fichiers serveur : .htaccess, proxys)
+#   /_frontend            → build statique Next.js servi par les règles de rewrite
+#   /agriintel360/api     → backend FastAPI démaré par cron_keepalive.sh sur 8001
+#   /agriintel360/logs    → journaux du backend
+REMOTE_ROOT="/"
+REMOTE_BACKEND_DIR="/api"
+REMOTE_LOGS_DIR="/logs"
+REMOTE_STAGING_DIR="/_frontend"
+# Racine documentaire réelle du compte (vérifiée sur le serveur) :
+#   FTP /  ==  /home/c2606883c/public_html/agriintel360
+# C'est pourquoi le backend est dans /api et le build dans /_frontend, et non
+# dans /agriintel360/api (qui créait une arborescence imbriquée jamais servie).
+REMOTE_DOCROOT="/home/c2606883c/public_html/agriintel360"
 REMOTE_LIVE_DIR="${REMOTE_ROOT}"
 
 # ------------------------------------------------------------------

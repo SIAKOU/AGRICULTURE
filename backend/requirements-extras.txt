@@ -1,0 +1,19 @@
+# ============================================================================
+# Intégrations optionnelles — chaque import est protégé par un try/except, donc
+# l'API démarre sans ces paquets. Les installer débloque les fonctions
+# correspondantes (stockage d'images, notifications push, export PDF, métadonnées).
+#
+#   pip install -r requirements-extras.txt
+# ============================================================================
+
+# Stockage d'images (src/services/files.py — try/except)
+cloudinary==1.38.0
+# Notifications push (src/services/push_notifications.py — try/except)
+firebase-admin==6.4.0
+# Export PDF riche (api/routers/reports.py, dashboard.py — try/except)
+weasyprint==60.2
+fpdf2==2.7.8
+# Détection MIME (src/services/files.py — try/except)
+python-magic==0.4.27
+# Métadonnées audio (src/services/files.py — try/except)
+mutagen==1.47.0
