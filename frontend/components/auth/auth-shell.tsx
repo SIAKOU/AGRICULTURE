@@ -115,7 +115,7 @@ function HexCanvas({ reduced }: { reduced: boolean }) {
       ctx.clearRect(0, 0, w, h);
 
       // Background fill
-      ctx.fillStyle = '#07100A';
+      ctx.fillStyle = 'hsl(var(--background))';
       ctx.fillRect(0, 0, w, h);
 
       for (const cell of cellsRef.current) {
@@ -128,7 +128,7 @@ function HexCanvas({ reduced }: { reduced: boolean }) {
 
         // Hex border
         hexPath(ctx, cx, cy, r - 1);
-        ctx.strokeStyle = 'rgba(196,146,58,0.09)';
+        ctx.strokeStyle = 'hsl(var(--secondary) / 0.09)';
         ctx.lineWidth = 0.8;
         ctx.stroke();
 
@@ -155,17 +155,17 @@ function HexCanvas({ reduced }: { reduced: boolean }) {
 
       // Top-bottom gradient vignette so content overlays read well
       const grad = ctx.createLinearGradient(0, 0, 0, h);
-      grad.addColorStop(0, 'rgba(7,16,10,0.72)');
-      grad.addColorStop(0.35, 'rgba(7,16,10,0.0)');
-      grad.addColorStop(0.65, 'rgba(7,16,10,0.0)');
-      grad.addColorStop(1, 'rgba(7,16,10,0.82)');
+      grad.addColorStop(0, 'hsl(var(--background) / 0.72)');
+      grad.addColorStop(0.35, 'hsl(var(--background) / 0.0)');
+      grad.addColorStop(0.65, 'hsl(var(--background) / 0.0)');
+      grad.addColorStop(1, 'hsl(var(--background) / 0.82)');
       ctx.fillStyle = grad;
       ctx.fillRect(0, 0, w, h);
 
       // Right-edge fade so it bleeds into the right panel
       const rightGrad = ctx.createLinearGradient(w - 80, 0, w, 0);
-      rightGrad.addColorStop(0, 'rgba(7,16,10,0)');
-      rightGrad.addColorStop(1, 'rgba(7,16,10,0.95)');
+      rightGrad.addColorStop(0, 'hsl(var(--background) / 0)');
+      rightGrad.addColorStop(1, 'hsl(var(--background) / 0.95)');
       ctx.fillStyle = rightGrad;
       ctx.fillRect(0, 0, w, h);
 
@@ -178,14 +178,14 @@ function HexCanvas({ reduced }: { reduced: boolean }) {
       // Static render for prefers-reduced-motion
       const w = canvas.width / devicePixelRatio;
       const h = canvas.height / devicePixelRatio;
-      ctx.fillStyle = '#07100A';
+      ctx.fillStyle = 'hsl(var(--background))';
       ctx.fillRect(0, 0, w, h);
       for (const cell of cellsRef.current) {
         hexPath(ctx, cell.cx, cell.cy, cell.r - 1.5);
         ctx.fillStyle = `rgba(22,32,25,${cell.baseAlpha})`;
         ctx.fill();
         hexPath(ctx, cell.cx, cell.cy, cell.r - 1);
-        ctx.strokeStyle = 'rgba(196,146,58,0.09)';
+        ctx.strokeStyle = 'hsl(var(--secondary) / 0.09)';
         ctx.lineWidth = 0.8;
         ctx.stroke();
       }
@@ -228,7 +228,7 @@ function LangToggle({ value, onChange }: { value: Locale; onChange: (l: Locale) 
       role="group"
       aria-label="Langue"
       className="inline-flex items-center gap-0.5 rounded-full p-1"
-      style={{ border: '1px solid rgba(196,146,58,0.28)', background: 'rgba(196,146,58,0.08)' }}
+      style={{ border: '1px solid hsl(var(--secondary) / 0.28)', background: 'hsl(var(--secondary) / 0.08)' }}
     >
       {(['fr', 'en'] as const).map((l) => (
         <button
@@ -239,8 +239,8 @@ function LangToggle({ value, onChange }: { value: Locale; onChange: (l: Locale) 
           className="h-7 w-10 rounded-full text-[11px] font-bold uppercase tracking-wider transition-all duration-200 cursor-pointer"
           style={
             value === l
-              ? { background: '#C4923A', color: '#1A1000' }
-              : { color: 'rgba(196,146,58,0.60)' }
+              ? { background: 'hsl(var(--secondary))', color: 'hsl(var(--surface-2))' }
+              : { color: 'hsl(var(--secondary) / 0.60)' }
           }
         >
           {l}
@@ -296,7 +296,7 @@ export function AuthShell({ children }: AuthShellProps) {
       ════════════════════════════════════════════════════════ */}
       <div
         className="relative hidden lg:flex lg:w-[45%] shrink-0 flex-col overflow-hidden"
-        style={{ background: '#07100A' }}
+        style={{ background: 'hsl(var(--background))' }}
       >
         {/* Animated hexgrid canvas */}
         <HexCanvas reduced={reduced} />
@@ -307,7 +307,7 @@ export function AuthShell({ children }: AuthShellProps) {
           className="absolute inset-0 pointer-events-none"
           style={{
             background:
-              'radial-gradient(ellipse 70% 55% at 50% 55%, rgba(196,146,58,0.12) 0%, transparent 70%)',
+              'radial-gradient(ellipse 70% 55% at 50% 55%, hsl(var(--secondary) / 0.12) 0%, transparent 70%)',
           }}
         />
 
@@ -328,8 +328,8 @@ export function AuthShell({ children }: AuthShellProps) {
               <div
                 className="relative h-11 w-11 rounded-xl flex items-center justify-center shrink-0 transition-transform duration-300 group-hover:scale-105"
                 style={{
-                  background: 'rgba(196,146,58,0.12)',
-                  border: '1px solid rgba(196,146,58,0.30)',
+                  background: 'hsl(var(--secondary) / 0.12)',
+                  border: '1px solid hsl(var(--secondary) / 0.30)',
                 }}
               >
                 <Image src="/logo.png" alt="" fill className="object-contain p-1.5" sizes="44px" />
@@ -337,13 +337,13 @@ export function AuthShell({ children }: AuthShellProps) {
               <div className="flex flex-col">
                 <span
                   className="text-[1.0625rem] font-black tracking-tight leading-none"
-                  style={{ color: '#E4DBC8' }}
+                  style={{ color: 'hsl(var(--foreground))' }}
                 >
-                  AgriIntel<span style={{ color: '#C4923A' }}>360</span>
+                  AgriIntel<span style={{ color: 'hsl(var(--secondary))' }}>360</span>
                 </span>
                 <span
                   className="text-[0.625rem] font-bold uppercase tracking-[0.22em] mt-[3px]"
-                  style={{ color: '#5E7A68' }}
+                  style={{ color: 'hsl(var(--muted-foreground))' }}
                 >
                   Intelligence agricole
                 </span>
@@ -360,20 +360,20 @@ export function AuthShell({ children }: AuthShellProps) {
           >
             <div
               className="w-10 h-[2px] mb-6"
-              style={{ background: 'linear-gradient(90deg, #C4923A, rgba(196,146,58,0.20))' }}
+              style={{ background: 'linear-gradient(90deg, hsl(var(--secondary)), hsl(var(--secondary) / 0.20))' }}
               aria-hidden
             />
             <blockquote
               className="font-display text-[clamp(1.5rem,2.6vw,2rem)] font-bold italic leading-[1.2] mb-5"
-              style={{ color: '#E4DBC8' }}
+              style={{ color: 'hsl(var(--foreground))' }}
             >
               &ldquo;Décidez mieux,{' '}
-              <em className="not-italic" style={{ color: '#C4923A' }}>
+              <em className="not-italic" style={{ color: 'hsl(var(--secondary))' }}>
                 cultivez plus intelligemment.
               </em>
               &rdquo;
             </blockquote>
-            <p className="text-sm leading-[1.72]" style={{ color: '#5E7A68' }}>
+            <p className="text-sm leading-[1.72]" style={{ color: 'hsl(var(--muted-foreground))' }}>
               La plateforme de référence pour l&apos;intelligence agricole en Afrique — données en
               temps réel, IA prédictive et recommandations concrètes.
             </p>
@@ -392,8 +392,8 @@ export function AuthShell({ children }: AuthShellProps) {
                   aria-hidden
                   className="flex h-8 w-8 items-center justify-center rounded-lg text-sm shrink-0"
                   style={{
-                    background: 'rgba(196,146,58,0.10)',
-                    border: '1px solid rgba(196,146,58,0.18)',
+                    background: 'hsl(var(--secondary) / 0.10)',
+                    border: '1px solid hsl(var(--secondary) / 0.18)',
                   }}
                 >
                   {item.icon}
@@ -412,7 +412,7 @@ export function AuthShell({ children }: AuthShellProps) {
       ════════════════════════════════════════════════════════ */}
       <div
         className="relative flex flex-1 flex-col items-center justify-center min-h-screen overflow-y-auto lg:w-[55%]"
-        style={{ background: '#07100A' }}
+        style={{ background: 'hsl(var(--background))' }}
       >
         {/* Subtle radial glow at center */}
         <div
@@ -420,7 +420,7 @@ export function AuthShell({ children }: AuthShellProps) {
           className="absolute inset-0 pointer-events-none"
           style={{
             background:
-              'radial-gradient(ellipse 65% 50% at 50% 50%, rgba(196,146,58,0.08) 0%, transparent 68%)',
+              'radial-gradient(ellipse 65% 50% at 50% 50%, hsl(var(--secondary) / 0.08) 0%, transparent 68%)',
           }}
         />
 
@@ -450,7 +450,7 @@ export function AuthShell({ children }: AuthShellProps) {
             className="absolute inset-0"
             style={{
               background:
-                'linear-gradient(180deg, rgba(7,16,10,0.68) 0%, rgba(7,16,10,0.96) 100%)',
+                'linear-gradient(180deg, hsl(var(--background) / 0.68) 0%, hsl(var(--background) / 0.96) 100%)',
             }}
           />
           <motion.div
@@ -463,14 +463,14 @@ export function AuthShell({ children }: AuthShellProps) {
               <div
                 className="relative h-8 w-8 rounded-lg flex items-center justify-center shrink-0"
                 style={{
-                  background: 'rgba(196,146,58,0.14)',
-                  border: '1px solid rgba(196,146,58,0.28)',
+                  background: 'hsl(var(--secondary) / 0.14)',
+                  border: '1px solid hsl(var(--secondary) / 0.28)',
                 }}
               >
                 <Image src="/logo.png" alt="" fill className="object-contain p-1" sizes="32px" />
               </div>
-              <span className="font-black text-base tracking-tight" style={{ color: '#E4DBC8' }}>
-                AgriIntel<span style={{ color: '#C4923A' }}>360</span>
+              <span className="font-black text-base tracking-tight" style={{ color: 'hsl(var(--foreground))' }}>
+                AgriIntel<span style={{ color: 'hsl(var(--secondary))' }}>360</span>
               </span>
             </Link>
           </motion.div>
@@ -493,7 +493,7 @@ export function AuthShell({ children }: AuthShellProps) {
               background: 'rgba(22,32,25,0.95)',
               backdropFilter: 'blur(20px)',
               WebkitBackdropFilter: 'blur(20px)',
-              border: '1px solid rgba(196,146,58,0.15)',
+              border: '1px solid hsl(var(--secondary) / 0.15)',
               boxShadow: '0 24px 64px rgba(0,0,0,0.45)',
             }}
           >

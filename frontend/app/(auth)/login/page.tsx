@@ -96,10 +96,10 @@ function FloatInput({
           transform: floated ? 'translateY(0) scale(0.8)' : 'translateY(-50%) scale(1)',
           transformOrigin: 'left center',
           color: error
-            ? '#f87171'
+            ? 'hsl(var(--destructive))'
             : floated
-            ? '#C4923A'
-            : '#5E7A68',
+            ? 'hsl(var(--secondary))'
+            : 'hsl(var(--muted-foreground))',
           fontSize: '0.9375rem',
           fontWeight: 500,
           pointerEvents: 'none',
@@ -120,7 +120,7 @@ function FloatInput({
           transform: 'translateY(-50%)',
           width: '1rem',
           height: '1rem',
-          color: error ? 'rgba(248,113,113,0.65)' : focused ? '#C4923A' : 'rgba(196,146,58,0.45)',
+          color: error ? 'rgba(248,113,113,0.65)' : focused ? 'hsl(var(--secondary))' : 'hsl(var(--secondary) / 0.45)',
           pointerEvents: 'none',
           transition: 'color 0.18s ease',
           flexShrink: 0,
@@ -158,17 +158,17 @@ function FloatInput({
             error
               ? 'rgba(248,113,113,0.55)'
               : focused
-              ? '#C4923A'
-              : 'rgba(196,146,58,0.25)'
+              ? 'hsl(var(--secondary))'
+              : 'hsl(var(--secondary) / 0.25)'
           }`,
           borderRadius: '0.5rem 0.5rem 0 0',
-          color: '#E4DBC8',
+          color: 'hsl(var(--foreground))',
           fontSize: '0.9375rem',
           outline: 'none',
           boxShadow: focused
             ? error
               ? 'none'
-              : 'inset 0 -1px 0 0 rgba(196,146,58,0.12)'
+              : 'inset 0 -1px 0 0 hsl(var(--secondary) / 0.12)'
             : 'none',
           transition:
             'border-color 0.18s ease, box-shadow 0.18s ease, padding-top 0.18s ease',
@@ -255,7 +255,7 @@ function LoginForm() {
             fontWeight: 700,
             fontStyle: 'italic',
             fontSize: '1.5rem',
-            color: '#E4DBC8',
+            color: 'hsl(var(--foreground))',
             marginBottom: '0.375rem',
             lineHeight: 1.2,
           }}
@@ -265,7 +265,7 @@ function LoginForm() {
         <p
           style={{
             fontSize: '0.875rem',
-            color: '#5E7A68',
+            color: 'hsl(var(--muted-foreground))',
             lineHeight: 1.5,
           }}
         >
@@ -299,7 +299,7 @@ function LoginForm() {
                 style={{
                   width: '1rem',
                   height: '1rem',
-                  color: '#f87171',
+                  color: 'hsl(var(--destructive))',
                   flexShrink: 0,
                   marginTop: '0.125rem',
                 }}
@@ -307,7 +307,7 @@ function LoginForm() {
               <p
                 style={{
                   fontSize: '0.875rem',
-                  color: '#fca5a5',
+                  color: 'hsl(var(--destructive))',
                   flex: 1,
                   lineHeight: 1.45,
                 }}
@@ -329,7 +329,7 @@ function LoginForm() {
                   transition: 'color 0.15s ease',
                 }}
                 onMouseEnter={(e) => {
-                  (e.currentTarget as HTMLButtonElement).style.color = '#f87171';
+                  (e.currentTarget as HTMLButtonElement).style.color = 'hsl(var(--destructive))';
                 }}
                 onMouseLeave={(e) => {
                   (e.currentTarget as HTMLButtonElement).style.color =
@@ -373,7 +373,7 @@ function LoginForm() {
                 style={{
                   marginTop: '0.375rem',
                   fontSize: '0.75rem',
-                  color: '#f87171',
+                  color: 'hsl(var(--destructive))',
                   paddingLeft: '0.25rem',
                 }}
               >
@@ -408,17 +408,17 @@ function LoginForm() {
                   border: 'none',
                   padding: '0.25rem',
                   cursor: 'pointer',
-                  color: 'rgba(196,146,58,0.45)',
+                  color: 'hsl(var(--secondary) / 0.45)',
                   display: 'flex',
                   alignItems: 'center',
                   transition: 'color 0.15s ease',
                 }}
                 onMouseEnter={(e) => {
-                  (e.currentTarget as HTMLButtonElement).style.color = '#C4923A';
+                  (e.currentTarget as HTMLButtonElement).style.color = 'hsl(var(--secondary))';
                 }}
                 onMouseLeave={(e) => {
                   (e.currentTarget as HTMLButtonElement).style.color =
-                    'rgba(196,146,58,0.45)';
+                    'hsl(var(--secondary) / 0.45)';
                 }}
               >
                 {showPassword ? (
@@ -441,7 +441,7 @@ function LoginForm() {
                 style={{
                   marginTop: '0.375rem',
                   fontSize: '0.75rem',
-                  color: '#f87171',
+                  color: 'hsl(var(--destructive))',
                   paddingLeft: '0.25rem',
                 }}
               >
@@ -466,15 +466,15 @@ function LoginForm() {
             style={{
               fontSize: '0.8125rem',
               fontWeight: 500,
-              color: '#C4923A',
+              color: 'hsl(var(--secondary))',
               textDecoration: 'none',
               transition: 'color 0.15s ease',
             }}
             onMouseEnter={(e) => {
-              (e.currentTarget as HTMLAnchorElement).style.color = '#DDA85A';
+              (e.currentTarget as HTMLAnchorElement).style.color = 'hsl(var(--secondary))';
             }}
             onMouseLeave={(e) => {
-              (e.currentTarget as HTMLAnchorElement).style.color = '#C4923A';
+              (e.currentTarget as HTMLAnchorElement).style.color = 'hsl(var(--secondary))';
             }}
           >
             Mot de passe oublié ?
@@ -493,9 +493,9 @@ function LoginForm() {
               borderRadius: '0.625rem',
               border: 'none',
               background: isLoginLoading
-                ? 'linear-gradient(135deg, rgba(196,146,58,0.5) 0%, rgba(176,121,40,0.5) 100%)'
-                : 'linear-gradient(135deg, #C4923A 0%, #b07928 100%)',
-              color: '#07100A',
+                ? 'linear-gradient(135deg, hsl(var(--secondary) / 0.5) 0%, rgba(176,121,40,0.5) 100%)'
+                : 'linear-gradient(135deg, hsl(var(--secondary)) 0%, hsl(var(--secondary)) 100%)',
+              color: 'hsl(var(--background))',
               fontSize: '0.9375rem',
               fontWeight: 700,
               cursor: isLoginLoading ? 'not-allowed' : 'pointer',
@@ -505,7 +505,7 @@ function LoginForm() {
               gap: '0.5rem',
               boxShadow: isLoginLoading
                 ? 'none'
-                : '0 4px 20px rgba(196,146,58,0.28)',
+                : '0 4px 20px hsl(var(--secondary) / 0.28)',
               opacity: isLoginLoading ? 0.6 : 1,
               transition:
                 'opacity 0.2s ease, transform 0.15s ease, box-shadow 0.15s ease',
@@ -516,7 +516,7 @@ function LoginForm() {
                 const btn = e.currentTarget as HTMLButtonElement;
                 btn.style.filter = 'brightness(1.1)';
                 btn.style.transform = 'translateY(-1px)';
-                btn.style.boxShadow = '0 6px 24px rgba(196,146,58,0.36)';
+                btn.style.boxShadow = '0 6px 24px hsl(var(--secondary) / 0.36)';
               }
             }}
             onMouseLeave={(e) => {
@@ -525,7 +525,7 @@ function LoginForm() {
               btn.style.transform = 'translateY(0)';
               btn.style.boxShadow = isLoginLoading
                 ? 'none'
-                : '0 4px 20px rgba(196,146,58,0.28)';
+                : '0 4px 20px hsl(var(--secondary) / 0.28)';
             }}
             onMouseDown={(e) => {
               if (!isLoginLoading) {
@@ -568,13 +568,13 @@ function LoginForm() {
           style={{
             flex: 1,
             height: '1px',
-            background: 'rgba(196,146,58,0.18)',
+            background: 'hsl(var(--secondary) / 0.18)',
           }}
         />
         <span
           style={{
             fontSize: '0.8125rem',
-            color: '#5E7A68',
+            color: 'hsl(var(--muted-foreground))',
             fontWeight: 500,
             letterSpacing: '0.04em',
             userSelect: 'none',
@@ -586,7 +586,7 @@ function LoginForm() {
           style={{
             flex: 1,
             height: '1px',
-            background: 'rgba(196,146,58,0.18)',
+            background: 'hsl(var(--secondary) / 0.18)',
           }}
         />
       </motion.div>
@@ -612,7 +612,7 @@ function LoginForm() {
             gap: '0.5rem',
             height: '3rem',
             borderRadius: '0.625rem',
-            border: '1px solid rgba(196, 146, 58, 0.18)',
+            border: '1px solid hsl(var(--secondary) / 0.18)',
             background: 'rgba(255, 255, 255, 0.03)',
             color: 'rgba(228, 219, 200, 0.75)',
             fontSize: '0.875rem',
@@ -622,12 +622,12 @@ function LoginForm() {
           }}
           onMouseEnter={(e) => {
             const btn = e.currentTarget as HTMLButtonElement;
-            btn.style.borderColor = 'rgba(196,146,58,0.45)';
+            btn.style.borderColor = 'hsl(var(--secondary) / 0.45)';
             btn.style.background = 'rgba(255,255,255,0.06)';
           }}
           onMouseLeave={(e) => {
             const btn = e.currentTarget as HTMLButtonElement;
-            btn.style.borderColor = 'rgba(196,146,58,0.18)';
+            btn.style.borderColor = 'hsl(var(--secondary) / 0.18)';
             btn.style.background = 'rgba(255,255,255,0.03)';
           }}
         >
@@ -651,7 +651,7 @@ function LoginForm() {
             gap: '0.5rem',
             height: '3rem',
             borderRadius: '0.625rem',
-            border: '1px solid rgba(196, 146, 58, 0.18)',
+            border: '1px solid hsl(var(--secondary) / 0.18)',
             background: 'rgba(255, 255, 255, 0.03)',
             color: 'rgba(228, 219, 200, 0.75)',
             fontSize: '0.875rem',
@@ -661,12 +661,12 @@ function LoginForm() {
           }}
           onMouseEnter={(e) => {
             const btn = e.currentTarget as HTMLButtonElement;
-            btn.style.borderColor = 'rgba(196,146,58,0.45)';
+            btn.style.borderColor = 'hsl(var(--secondary) / 0.45)';
             btn.style.background = 'rgba(255,255,255,0.06)';
           }}
           onMouseLeave={(e) => {
             const btn = e.currentTarget as HTMLButtonElement;
-            btn.style.borderColor = 'rgba(196,146,58,0.18)';
+            btn.style.borderColor = 'hsl(var(--secondary) / 0.18)';
             btn.style.background = 'rgba(255,255,255,0.03)';
           }}
         >
@@ -691,23 +691,23 @@ function LoginForm() {
         <p
           style={{
             fontSize: '0.875rem',
-            color: '#5E7A68',
+            color: 'hsl(var(--muted-foreground))',
           }}
         >
           Pas encore de compte ?{' '}
           <Link
             href="/register"
             style={{
-              color: '#C4923A',
+              color: 'hsl(var(--secondary))',
               fontWeight: 600,
               textDecoration: 'none',
               transition: 'color 0.15s ease',
             }}
             onMouseEnter={(e) => {
-              (e.currentTarget as HTMLAnchorElement).style.color = '#DDA85A';
+              (e.currentTarget as HTMLAnchorElement).style.color = 'hsl(var(--secondary))';
             }}
             onMouseLeave={(e) => {
-              (e.currentTarget as HTMLAnchorElement).style.color = '#C4923A';
+              (e.currentTarget as HTMLAnchorElement).style.color = 'hsl(var(--secondary))';
             }}
           >
             S&apos;inscrire

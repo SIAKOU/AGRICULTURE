@@ -8,23 +8,23 @@ export const metadata: Metadata = {
 };
 
 const SECTORS = [
-  { label: 'Végétal',      color: '#22C55E' },
-  { label: 'Animal',       color: '#D97706' },
-  { label: 'Halieutique',  color: '#38BDF8' },
-  { label: 'Forestier',    color: '#86EFAC' },
+  { label: 'Végétal',      color: 'hsl(var(--success))' },
+  { label: 'Animal',       color: 'hsl(var(--warning))' },
+  { label: 'Halieutique',  color: 'hsl(var(--accent))' },
+  { label: 'Forestier',    color: 'hsl(var(--success))' },
 ];
 
 // Agricultural parcels mosaic — 45 cells, 9 columns × 5 rows
 const PARCEL_PALETTE = [
-  '#0F4D22', '#17622A', '#1A7530', '#4ADE80', '#22C55E',
-  '#16A34A', '#D97706', '#0C1810', '#1A3726', '#7A9475',
-  '#E8A733', '#17622A', '#22C55E', '#1A7530', '#4ADE80',
-  '#0891B2', '#1A3726', '#16A34A', '#E8A733', '#0F4D22',
-  '#38BDF8', '#1A7530', '#D97706', '#4ADE80', '#17622A',
-  '#22C55E', '#0891B2', '#1A3726', '#16A34A', '#D97706',
-  '#4ADE80', '#E8A733', '#0F4D22', '#22C55E', '#1A7530',
-  '#17622A', '#D97706', '#16A34A', '#38BDF8', '#4ADE80',
-  '#1A3726', '#E8A733', '#22C55E', '#0F4D22', '#1A7530',
+  'hsl(var(--primary))', 'hsl(var(--success))', 'hsl(var(--success))', 'hsl(var(--success))', 'hsl(var(--success))',
+  'hsl(var(--primary))', 'hsl(var(--warning))', 'hsl(var(--background))', 'hsl(var(--surface-2))', 'hsl(var(--muted-foreground))',
+  'hsl(var(--secondary))', 'hsl(var(--success))', 'hsl(var(--success))', 'hsl(var(--success))', 'hsl(var(--success))',
+  'hsl(var(--accent))', 'hsl(var(--surface-2))', 'hsl(var(--primary))', 'hsl(var(--secondary))', 'hsl(var(--primary))',
+  'hsl(var(--accent))', 'hsl(var(--success))', 'hsl(var(--warning))', 'hsl(var(--success))', 'hsl(var(--success))',
+  'hsl(var(--success))', 'hsl(var(--accent))', 'hsl(var(--surface-2))', 'hsl(var(--primary))', 'hsl(var(--warning))',
+  'hsl(var(--success))', 'hsl(var(--secondary))', 'hsl(var(--primary))', 'hsl(var(--success))', 'hsl(var(--success))',
+  'hsl(var(--success))', 'hsl(var(--warning))', 'hsl(var(--primary))', 'hsl(var(--accent))', 'hsl(var(--success))',
+  'hsl(var(--surface-2))', 'hsl(var(--secondary))', 'hsl(var(--success))', 'hsl(var(--primary))', 'hsl(var(--success))',
 ];
 
 const PARCELS_OPACITIES = PARCEL_PALETTE.map((_, i) =>
@@ -33,35 +33,35 @@ const PARCELS_OPACITIES = PARCEL_PALETTE.map((_, i) =>
 
 export default function ContactPage() {
   return (
-    <main style={{ color: '#E8E0CC', background: '#0C1810' }}>
+    <main style={{ color: 'hsl(var(--foreground))', background: 'hsl(var(--background))' }}>
       {/* ── Global interactive styles ─────────────────────── */}
       <style>{`
         .ci {
           width: 100%;
-          background: #0a1a0e;
+          background: hsl(var(--background));
           border: 1px solid rgba(74,222,128,0.13);
           border-radius: 10px;
           padding: 12px 16px;
           font-size: 14px;
-          color: #E8E0CC;
+          color: hsl(var(--foreground));
           outline: none;
           transition: border-color 0.2s ease, box-shadow 0.2s ease;
           font-family: inherit;
           line-height: 1.5;
           box-sizing: border-box;
         }
-        .ci::placeholder { color: #384D38; }
+        .ci::placeholder { color: hsl(var(--muted-foreground)); }
         .ci:focus {
           border-color: rgba(74,222,128,0.45);
           box-shadow: 0 0 0 3px rgba(74,222,128,0.07);
         }
-        .ci option { background: #0e2218; }
+        .ci option { background: hsl(var(--background)); }
         .csb {
           display: inline-flex;
           align-items: center;
           gap: 8px;
-          background: #E8A733;
-          color: #0a1a0e;
+          background: hsl(var(--secondary));
+          color: hsl(var(--background));
           border: none;
           border-radius: 10px;
           padding: 13px 26px;
@@ -72,9 +72,9 @@ export default function ContactPage() {
           transition: background 0.18s ease, transform 0.12s ease;
           flex-shrink: 0;
         }
-        .csb:hover { background: #F5BE4A; transform: translateY(-1px); }
+        .csb:hover { background: hsl(var(--secondary)); transform: translateY(-1px); }
         .csb:active { transform: translateY(0); }
-        .c-link-green { color: #4ADE80; text-decoration: none; font-weight: 600; }
+        .c-link-green { color: hsl(var(--success)); text-decoration: none; font-weight: 600; }
         .c-link-green:hover { opacity: 0.75; }
         .c-card-link { display: block; text-decoration: none; color: inherit; transition: background 0.14s ease; }
         .c-card-link:hover > div { background: rgba(74,222,128,0.04) !important; }
@@ -85,7 +85,7 @@ export default function ContactPage() {
           border-radius: 10px;
           padding: 11px 20px;
           font-size: 13px; font-weight: 600;
-          color: #4ADE80; text-decoration: none;
+          color: hsl(var(--success)); text-decoration: none;
           transition: background 0.15s ease;
         }
         .c-ghost-btn:hover { background: rgba(74,222,128,0.12); }
@@ -115,10 +115,10 @@ export default function ContactPage() {
           }}>
             <span style={{
               width: '6px', height: '6px', borderRadius: '50%',
-              background: '#4ADE80', display: 'block',
+              background: 'hsl(var(--success))', display: 'block',
               boxShadow: '0 0 8px rgba(74,222,128,0.7)',
             }} />
-            <span style={{ fontSize: '11px', fontWeight: '600', letterSpacing: '0.2em', textTransform: 'uppercase', color: '#4ADE80' }}>
+            <span style={{ fontSize: '11px', fontWeight: '600', letterSpacing: '0.2em', textTransform: 'uppercase', color: 'hsl(var(--success))' }}>
               Équipe disponible · Lun–Ven
             </span>
           </div>
@@ -132,17 +132,17 @@ export default function ContactPage() {
                 fontWeight: '800',
                 letterSpacing: '-0.04em',
                 lineHeight: '1.02',
-                color: '#F0EDE0',
+                color: 'hsl(var(--foreground))',
                 marginBottom: '24px',
               }}>
                 Parlons de<br />
-                <span style={{ color: '#4ADE80' }}>vos données</span><br />
+                <span style={{ color: 'hsl(var(--success))' }}>vos données</span><br />
                 terrain.
               </h1>
 
               <p style={{
                 fontSize: '16px', lineHeight: '1.8',
-                color: '#6B8564', maxWidth: '480px', marginBottom: '40px',
+                color: 'hsl(var(--muted-foreground))', maxWidth: '480px', marginBottom: '40px',
               }}>
                 Prévisions de récolte, suivi d'intrants, qualité du sol —
                 notre équipe vous accompagne pour extraire de la valeur
@@ -172,22 +172,22 @@ export default function ContactPage() {
 
             {/* ── Right: quick contact card ── */}
             <div style={{
-              background: '#112119',
+              background: 'hsl(var(--surface-2))',
               border: '1px solid rgba(74,222,128,0.09)',
               borderRadius: '18px', padding: '28px',
             }}>
               <p style={{
                 fontSize: '10px', fontWeight: '600',
                 letterSpacing: '0.22em', textTransform: 'uppercase',
-                color: '#4D6B5E', marginBottom: '24px',
+                color: 'hsl(var(--muted-foreground))', marginBottom: '24px',
               }}>
                 Coordonnées directes
               </p>
 
               {([
-                { Icon: Mail,  label: 'EMAIL',        value: APP_CONTACT_EMAIL, color: '#4ADE80', href: `mailto:${APP_CONTACT_EMAIL}` },
-                { Icon: Phone, label: 'TÉLÉPHONE',    value: APP_SUPPORT_PHONE, color: '#E8A733', href: `tel:${APP_SUPPORT_PHONE.replace(/[^+0-9]/g, '')}` },
-                { Icon: Clock, label: 'DISPONIBILITÉ', value: '9h–18h · Lun–Ven', color: '#6B8564', href: null },
+                { Icon: Mail,  label: 'EMAIL',        value: APP_CONTACT_EMAIL, color: 'hsl(var(--success))', href: `mailto:${APP_CONTACT_EMAIL}` },
+                { Icon: Phone, label: 'TÉLÉPHONE',    value: APP_SUPPORT_PHONE, color: 'hsl(var(--secondary))', href: `tel:${APP_SUPPORT_PHONE.replace(/[^+0-9]/g, '')}` },
+                { Icon: Clock, label: 'DISPONIBILITÉ', value: '9h–18h · Lun–Ven', color: 'hsl(var(--muted-foreground))', href: null },
               ] as const).map(({ Icon, label, value, color, href }, i) => {
                 const inner = (
                   <div style={{
@@ -206,10 +206,10 @@ export default function ContactPage() {
                       <Icon size={16} />
                     </span>
                     <div>
-                      <p style={{ fontSize: '9px', color: '#4D6B5E', letterSpacing: '0.18em', marginBottom: '3px' }}>{label}</p>
+                      <p style={{ fontSize: '9px', color: 'hsl(var(--muted-foreground))', letterSpacing: '0.18em', marginBottom: '3px' }}>{label}</p>
                       <p style={{
                         fontSize: '13px', fontWeight: '600',
-                        color: href ? color : '#C4D4BC',
+                        color: href ? color : 'hsl(var(--foreground) / 0.7)',
                         wordBreak: 'break-all',
                       }}>
                         {value}
@@ -239,7 +239,7 @@ export default function ContactPage() {
             <div style={{ flex: 1, height: '1px', background: 'rgba(74,222,128,0.08)' }} />
             <p style={{
               fontSize: '10px', fontWeight: '600',
-              letterSpacing: '0.22em', textTransform: 'uppercase', color: '#4D6B5E',
+              letterSpacing: '0.22em', textTransform: 'uppercase', color: 'hsl(var(--muted-foreground))',
             }}>
               Écrivez-nous
             </p>
@@ -252,7 +252,7 @@ export default function ContactPage() {
                 FORM PANEL
             ════════════════════════ */}
             <div style={{
-              background: '#112119',
+              background: 'hsl(var(--surface-2))',
               border: '1px solid rgba(74,222,128,0.08)',
               borderRadius: '20px',
               padding: 'clamp(28px, 4vw, 52px)',
@@ -260,12 +260,12 @@ export default function ContactPage() {
               <h2 style={{
                 fontSize: 'clamp(1.5rem, 2.8vw, 2.15rem)',
                 fontWeight: '700', letterSpacing: '-0.025em',
-                marginBottom: '8px', color: '#F0EDE0',
+                marginBottom: '8px', color: 'hsl(var(--foreground))',
               }}>
                 Décrivez votre projet.
               </h2>
               <p style={{
-                fontSize: '14px', color: '#6B8564',
+                fontSize: '14px', color: 'hsl(var(--muted-foreground))',
                 marginBottom: '36px', lineHeight: '1.8',
               }}>
                 Un message précis nous permet de vous répondre avec
@@ -281,7 +281,7 @@ export default function ContactPage() {
                       <label style={{
                         display: 'block', fontSize: '10px', fontWeight: '700',
                         letterSpacing: '0.18em', textTransform: 'uppercase',
-                        color: '#4D6B5E', marginBottom: '8px',
+                        color: 'hsl(var(--muted-foreground))', marginBottom: '8px',
                       }}>
                         Nom complet
                       </label>
@@ -291,7 +291,7 @@ export default function ContactPage() {
                       <label style={{
                         display: 'block', fontSize: '10px', fontWeight: '700',
                         letterSpacing: '0.18em', textTransform: 'uppercase',
-                        color: '#4D6B5E', marginBottom: '8px',
+                        color: 'hsl(var(--muted-foreground))', marginBottom: '8px',
                       }}>
                         Organisation
                       </label>
@@ -304,7 +304,7 @@ export default function ContactPage() {
                     <label style={{
                       display: 'block', fontSize: '10px', fontWeight: '700',
                       letterSpacing: '0.18em', textTransform: 'uppercase',
-                      color: '#4D6B5E', marginBottom: '8px',
+                      color: 'hsl(var(--muted-foreground))', marginBottom: '8px',
                     }}>
                       Email professionnel
                     </label>
@@ -316,7 +316,7 @@ export default function ContactPage() {
                     <label style={{
                       display: 'block', fontSize: '10px', fontWeight: '700',
                       letterSpacing: '0.18em', textTransform: 'uppercase',
-                      color: '#4D6B5E', marginBottom: '8px',
+                      color: 'hsl(var(--muted-foreground))', marginBottom: '8px',
                     }}>
                       Secteur agricole
                     </label>
@@ -335,7 +335,7 @@ export default function ContactPage() {
                     <label style={{
                       display: 'block', fontSize: '10px', fontWeight: '700',
                       letterSpacing: '0.18em', textTransform: 'uppercase',
-                      color: '#4D6B5E', marginBottom: '8px',
+                      color: 'hsl(var(--muted-foreground))', marginBottom: '8px',
                     }}>
                       Votre message
                     </label>
@@ -354,7 +354,7 @@ export default function ContactPage() {
                     alignItems: 'center', justifyContent: 'space-between',
                     flexWrap: 'wrap', paddingTop: '4px',
                   }}>
-                    <p style={{ fontSize: '12px', color: '#4D6B5E', flex: 1, minWidth: '180px' }}>
+                    <p style={{ fontSize: '12px', color: 'hsl(var(--muted-foreground))', flex: 1, minWidth: '180px' }}>
                       Ou directement à{' '}
                       <a href={`mailto:${APP_CONTACT_EMAIL}`} className="c-link-green">
                         {APP_CONTACT_EMAIL}
@@ -377,14 +377,14 @@ export default function ContactPage() {
 
               {/* Contact list */}
               <div style={{
-                background: '#112119',
+                background: 'hsl(var(--surface-2))',
                 border: '1px solid rgba(74,222,128,0.08)',
                 borderRadius: '16px', overflow: 'hidden',
               }}>
                 {([
-                  { Icon: Phone, label: 'Téléphone',    value: APP_SUPPORT_PHONE,  sub: 'Lun–Ven · 9h–18h',       color: '#E8A733', href: `tel:${APP_SUPPORT_PHONE.replace(/[^+0-9]/g, '')}` },
-                  { Icon: Mail,  label: 'Email',         value: APP_CONTACT_EMAIL,  sub: 'Réponse < 24h ouvrées', color: '#4ADE80', href: `mailto:${APP_CONTACT_EMAIL}` },
-                  { Icon: Clock, label: 'Disponibilité', value: 'Lundi – Vendredi', sub: '9h00 à 18h00 (GMT)',    color: '#6B8564', href: null },
+                  { Icon: Phone, label: 'Téléphone',    value: APP_SUPPORT_PHONE,  sub: 'Lun–Ven · 9h–18h',       color: 'hsl(var(--secondary))', href: `tel:${APP_SUPPORT_PHONE.replace(/[^+0-9]/g, '')}` },
+                  { Icon: Mail,  label: 'Email',         value: APP_CONTACT_EMAIL,  sub: 'Réponse < 24h ouvrées', color: 'hsl(var(--success))', href: `mailto:${APP_CONTACT_EMAIL}` },
+                  { Icon: Clock, label: 'Disponibilité', value: 'Lundi – Vendredi', sub: '9h00 à 18h00 (GMT)',    color: 'hsl(var(--muted-foreground))', href: null },
                 ] as const).map(({ Icon, label, value, sub, color, href }, i) => {
                   const inner = (
                     <div style={{
@@ -402,19 +402,19 @@ export default function ContactPage() {
                       </span>
                       <div style={{ minWidth: 0 }}>
                         <p style={{
-                          fontSize: '9px', color: '#4D6B5E',
+                          fontSize: '9px', color: 'hsl(var(--muted-foreground))',
                           letterSpacing: '0.18em', textTransform: 'uppercase', marginBottom: '2px',
                         }}>
                           {label}
                         </p>
                         <p style={{
                           fontSize: '13px', fontWeight: '600',
-                          color: href ? color : '#C4D4BC',
+                          color: href ? color : 'hsl(var(--foreground) / 0.7)',
                           overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                         }}>
                           {value}
                         </p>
-                        <p style={{ fontSize: '11px', color: '#4D6B5E', marginTop: '1px' }}>{sub}</p>
+                        <p style={{ fontSize: '11px', color: 'hsl(var(--muted-foreground))', marginTop: '1px' }}>{sub}</p>
                       </div>
                     </div>
                   );
@@ -428,22 +428,22 @@ export default function ContactPage() {
 
               {/* Mission block */}
               <div style={{
-                background: '#112119',
+                background: 'hsl(var(--surface-2))',
                 borderTop: '1px solid rgba(74,222,128,0.08)',
                 borderRight: '1px solid rgba(74,222,128,0.08)',
                 borderBottom: '1px solid rgba(74,222,128,0.08)',
-                borderLeft: '3px solid #4ADE80',
+                borderLeft: '3px solid hsl(var(--success))',
                 borderRadius: '0 14px 14px 0',
                 padding: '22px 24px',
               }}>
                 <p style={{
                   fontSize: '9px', fontWeight: '700',
                   letterSpacing: '0.22em', textTransform: 'uppercase',
-                  color: '#4ADE80', marginBottom: '10px',
+                  color: 'hsl(var(--success))', marginBottom: '10px',
                 }}>
                   Notre mission
                 </p>
-                <p style={{ fontSize: '14px', lineHeight: '1.75', color: '#A8C4A0' }}>
+                <p style={{ fontSize: '14px', lineHeight: '1.75', color: 'hsl(var(--foreground) / 0.65)' }}>
                   Rendre les données agricoles actionnables pour chaque exploitant,
                   conseiller et décideur en Afrique.
                 </p>
@@ -455,14 +455,14 @@ export default function ContactPage() {
                   spécifique au monde agri, jamais vu sur contact
               ──────────────────────────────────────────────── */}
               <div style={{
-                background: '#112119',
+                background: 'hsl(var(--surface-2))',
                 border: '1px solid rgba(74,222,128,0.08)',
                 borderRadius: '16px', padding: '20px',
               }}>
                 <p style={{
                   fontSize: '9px', fontWeight: '700',
                   letterSpacing: '0.2em', textTransform: 'uppercase',
-                  color: '#4D6B5E', marginBottom: '14px',
+                  color: 'hsl(var(--muted-foreground))', marginBottom: '14px',
                 }}>
                   Couverture · 4 filières
                 </p>
@@ -493,7 +493,7 @@ export default function ContactPage() {
                   {SECTORS.map(s => (
                     <span key={s.label} style={{
                       display: 'flex', alignItems: 'center', gap: '5px',
-                      fontSize: '10px', color: '#6B8564',
+                      fontSize: '10px', color: 'hsl(var(--muted-foreground))',
                     }}>
                       <span style={{
                         width: '8px', height: '8px',
@@ -514,7 +514,7 @@ export default function ContactPage() {
           CLOSING STRIP
       ═══════════════════════════════════════════════════════ */}
       <section style={{
-        background: '#090F0A',
+        background: 'hsl(var(--background))',
         borderTop: '1px solid rgba(74,222,128,0.07)',
         padding: '36px 0',
       }}>
@@ -527,12 +527,12 @@ export default function ContactPage() {
         >
           <div>
             <p style={{
-              fontSize: '10px', color: '#4D6B5E',
+              fontSize: '10px', color: 'hsl(var(--muted-foreground))',
               letterSpacing: '0.2em', textTransform: 'uppercase', marginBottom: '5px',
             }}>
               Contact direct
             </p>
-            <p style={{ fontSize: '15px', color: '#B4CAB0' }}>
+            <p style={{ fontSize: '15px', color: 'hsl(var(--foreground) / 0.7)' }}>
               Écrivez directement à{' '}
               <a href={`mailto:${APP_CONTACT_EMAIL}`} className="c-link-green">
                 {APP_CONTACT_EMAIL}
