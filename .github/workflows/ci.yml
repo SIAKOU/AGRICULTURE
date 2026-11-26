@@ -1,0 +1,165 @@
+# Intégration continue AgriIntel360
+#
+# Le dépôt est organisé en branches (main, frontend, backend, docs) : chaque
+# travail récupère les branches dont il a besoin plutôt que de supposer un
+# monorepo. Aucun accès réseau ni base de données n'est requis pour les
+# contrôles statiques.
+
+name: CI
+
+on:
+  push:
+    branches: [main, frontend, backend, docs]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  contract:
+    name: Contrat API et intégrité des données
+    runs-on: ubuntu-latest
+    steps:
+      - name: Récupérer les scripts (branche docs)
+        uses: actions/checkout@v4
+        with:
+          ref: docs
+
+      - name: Récupérer le frontend
+        uses: actions/checkout@v4
+        with:
+          ref: frontend
+          path: _frontend
+
+      - name: Récupérer le backend
+        uses: actions/checkout@v4
+        with:
+          ref: backend
+          path: _backend
+
+      # Chaque branche porte son dossier à sa racine : on le remet à la place
+      # qu'attendent les scripts (scripts/ est à la racine, code dans frontend/ et backend/).
+      - name: Reconstituer l'arborescence attendue
+        run: |
+          mkdir -p frontend backend
+          rsync -a --exclude .git _frontend/frontend/ frontend/
+          rsync -a --exclude .git _backend/backend/ backend/
+          test -d frontend/app  || { echo "::error::frontend/app absent"; exit 1; }
+          test -d backend/api   || { echo "::error::backend/api absent";  exit 1; }
+          echo "frontend : $(find frontend -name '*.ts*' | wc -l) fichiers TS"
+          echo "backend  : $(find backend -name '*.py'   | wc -l) fichiers Python"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Contrat des routes (frontend ↔ backend)
+        run: python scripts/check-api-contract.py
+
+      - name: Aucune donnée inventée à l'écran
+        run: python scripts/audit-frontend-data.py
+
+  frontend:
+    name: Frontend (types, tests, build)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: frontend
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Installer les dépendances
+        run: npm ci --no-audit --no-fund
+
+      - name: Typage strict
+        run: npx tsc --noEmit
+
+      - name: Tests unitaires
+        run: npm test
+
+      - name: Build de production (export statique)
+        run: npm run build
+
+      - name: Le build contient bien les pages attendues
+        run: |
+          test -f out/index.html || { echo "::error::out/index.html manquant"; exit 1; }
+          test -f out/dashboard.html || { echo "::error::out/dashboard.html manquant"; exit 1; }
+          echo "pages générées : $(find out -name '*.html' | wc -l)"
+
+  backend:
+    name: Backend (syntaxe et imports)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: backend
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Compilation de tous les modules
+        working-directory: backend
+        run: python -m compileall -q api src config migrations
+
+      - name: Les routeurs sont syntaxiquement cohérents
+        working-directory: backend
+        run: |
+          python - <<'PY'
+          import ast, pathlib, sys
+          errors = []
+          for path in pathlib.Path('api/routers').rglob('*.py'):
+              try:
+                  ast.parse(path.read_text(encoding='utf-8'))
+              except SyntaxError as exc:
+                  errors.append(f"{path}: {exc}")
+          if errors:
+              print("\n".join(errors))
+              sys.exit(1)
+          print(f"{len(list(pathlib.Path('api/routers').rglob('*.py')))} routeurs valides")
+          PY
+
+      - name: Les migrations Alembic s'enchaînent sans trou
+        working-directory: backend
+        run: |
+          python - <<'PY'
+          import ast, pathlib, sys
+          revisions, downs = {}, set()
+          for path in sorted(pathlib.Path('migrations/versions').glob('0*.py')):
+              tree = ast.parse(path.read_text(encoding='utf-8'))
+              rev = down = None
+              for node in tree.body:
+                  if isinstance(node, ast.Assign):
+                      for target in node.targets:
+                          if getattr(target, 'id', None) == 'revision' and isinstance(node.value, ast.Constant):
+                              rev = node.value.value
+                          if getattr(target, 'id', None) == 'down_revision' and isinstance(node.value, ast.Constant):
+                              down = node.value.value
+              if rev:
+                  revisions[rev] = down
+                  if down:
+                      downs.add(down)
+          orphans = [r for r, d in revisions.items() if d and d not in revisions]
+          heads = [r for r in revisions if r not in downs]
+          print(f"{len(revisions)} révisions, têtes : {heads}")
+          if orphans:
+              print(f"::error::révisions sans parent connu : {orphans}")
+              sys.exit(1)
+          if len(heads) != 1:
+              print(f"::error::plusieurs têtes de migration : {heads}")
+              sys.exit(1)
+          PY
