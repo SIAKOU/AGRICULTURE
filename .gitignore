@@ -1,0 +1,48 @@
+# Dépendances et artefacts de build
+node_modules/
+.next/
+out/
+dist/
+build/
+*.tsbuildinfo
+next-env.d.ts
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Secrets et configuration locale — ne jamais committer
+.env
+.env.*
+!.env.example
+.deploy-secrets
+.deploy-jwt-secret
+.deploy_checkpoint
+deploy/.deploy-*
+deploy/.health-smoke-env
+deploy/logs/*.txt
+
+# Journaux
+*.log
+logs/
+deploy/logs/
+npm-debug.log*
+cypress/videos/
+cypress/screenshots/
+cypress/reports/
+coverage/
+playwright-report/
+test-results/
+
+# Éditeurs et système
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
