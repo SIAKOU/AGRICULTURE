@@ -1,0 +1,51 @@
+# ============================================
+# FICHIER : lftp-mirror.lftp
+# DESCRIPTION : Script lftp — mirror du build statique Next.js vers LWS
+# AUTEUR : Agent DevOps AgriIntel360
+# DATE : $(date +%Y-%m-%d)
+#
+# USAGE (le script ne contient AUCUN identifiant — fournis via la ligne de
+# commande ou ~/.netrc) :
+#
+#   lftp -p 21 -u doc@agriintel360.lsgrouptogo.com ftp.lsgrouptogo.com \
+#        -f lftp-mirror.lftp
+#
+#   # ou avec ~/.netrc (recommandé, permissions 600) :
+#   #   machine ftp.lsgrouptogo.com
+#   #   login doc@agriintel360.lsgrouptogo.com
+#   #   password VOTRE_MOT_DE_PASSE
+#   lftp -f lftp-mirror.lftp
+#
+# NB : la commande `mirror` peut être exécutée en dry-run en ajoutant
+#      `--dry-run` avant --reverse pour une prévisualisation.
+# ============================================
+
+# --- Sécurité : FTPS explicite, pas de vérification du certificat ---
+set ftp:ssl-allow yes
+set ftp:ssl-force yes
+set ssl:verify-certificate no
+
+# --- Stabilité réseau ---
+set ftp:passive-mode yes
+set mirror:use-pget-n 4
+set net:timeout 30
+set net:max-retries 3
+set net:reconnect-interval-base 5
+
+# --- Cible distante : racine du domaine ---
+cd /agriintel360.lsgrouptogo.com
+
+# --- Préparation du dossier de staging ---
+mkdir -p /agriintel360.lsgrouptogo.com/_frontend
+cd /agriintel360.lsgrouptogo.com/_frontend
+
+# --- Mirror du build statique local vers le serveur ---
+# Source : ../frontend/out  (relative au dossier deploy/)
+# --reverse : upload local → distant
+# --delete  : supprime les fichiers distants orphelins
+# --parallel : 8 connexions simultanées
+mirror --reverse --delete --verbose --parallel=8 \
+  "../frontend/out/" "./"
+
+# --- Fin ---
+bye

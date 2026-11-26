@@ -1,0 +1,127 @@
+# ============================================
+# .htaccess — AgriIntel360 (LWS mutualisé)
+# Description : HTTPS forcé, proxy PHP→uvicorn, build statique servi
+#               depuis _frontend/, routes dynamiques Next.js,
+#               headers de sécurité, compression.
+# Auteur : Agent DevOps AgriIntel360
+#
+# NB : ce fichier est déployé automatiquement par deploy-agriintel360.sh
+#      (généré dans deploy/staging/.htaccess avec les bonnes variables).
+#      La version ci-dessous sert de référence/documentation.
+# ============================================
+
+Options -Indexes -MultiViews -Includes
+ServerSignature Off
+# Interdit le listage et l'exécution de scripts dans les dossiers d'uploads
+<IfModule mod_autoindex.c>
+  IndexIgnore *
+</IfModule>
+DirectoryIndex _frontend/index.html
+
+# ---------- REDIRECTION HTTPS FORCÉE ----------
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  RewriteBase /
+
+  RewriteCond %{HTTPS} !=on
+  RewriteRule ^ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
+
+  # ---------- PROXY PHP → UVICORN (API + WebSocket) ----------
+  # Tout /api/ est transmis au backend FastAPI sur 127.0.0.1:8001
+  # 1. WebSocket / socket.io → tunnel brut (wss://)
+  RewriteCond %{REQUEST_URI} ^/api/v1/(ws|socket.io)/ [NC]
+  RewriteRule ^api/(.*)$ ws-tunnel.php [QSA,L]
+
+  # 2. REST / JSON → proxy HTTP
+  RewriteCond %{REQUEST_URI} ^/api/ [NC]
+  RewriteRule ^api/(.*)$ proxy-api.php [QSA,L]
+
+  # ---------- BUILD STATIQUE SERVI DEPUIS _frontend/ ----------
+  # Le build Next.js (out/) est uploadé dans _frontend/.
+
+  # Déjà dans _frontend/ → servi tel quel (évite toute boucle de rewrite)
+  RewriteCond %{REQUEST_URI} ^/_frontend/ [NC]
+  RewriteRule ^ - [L]
+
+  # 1) Routes dynamiques pré-rendues : /community/groups/123 → _frontend/community/groups/_.html
+  RewriteRule ^community/groups/([^/.]+)/?$ _frontend/community/groups/_.html [L,QSA]
+
+  # 2) Fichiers réels du build (assets, robots.txt, favicon, _next/*)
+  RewriteCond %{REQUEST_URI} !^/(api|_frontend|proxy-api\.php|ws-tunnel\.php) [NC]
+  RewriteCond %{DOCUMENT_ROOT}/_frontend%{REQUEST_URI} -f
+  RewriteRule ^(.*)$ _frontend/$1 [L]
+
+  # 3) Pages Next.js sans extension : /dashboard → _frontend/dashboard.html
+  RewriteCond %{REQUEST_URI} !^/(api|_frontend|proxy-api\.php|ws-tunnel\.php) [NC]
+  RewriteCond %{DOCUMENT_ROOT}/_frontend%{REQUEST_URI}.html -f
+  RewriteRule ^(.*)$ _frontend/$1.html [L]
+
+  # 4) Fallback SPA → index.html (routes client-side uniquement)
+  RewriteCond %{REQUEST_URI} !^/(api|_frontend|proxy-api\.php|ws-tunnel\.php) [NC]
+  RewriteRule ^(.*)$ _frontend/index.html [L]
+</IfModule>
+
+# ---------- COMPRESSION ----------
+<IfModule mod_deflate.c>
+  AddOutputFilterByType DEFLATE text/html text/plain text/css text/javascript application/javascript application/json application/xml image/svg+xml font/woff2
+</IfModule>
+
+# ---------- CACHE STATIQUE ----------
+<IfModule mod_expires.c>
+  ExpiresActive On
+  ExpiresByType image/png       "access plus 30 days"
+  ExpiresByType image/jpeg      "access plus 30 days"
+  ExpiresByType image/webp      "access plus 30 days"
+  ExpiresByType image/svg+xml   "access plus 30 days"
+  ExpiresByType font/woff2      "access plus 1 year"
+  ExpiresByType text/css        "access plus 7 days"
+  ExpiresByType application/javascript "access plus 7 days"
+</IfModule>
+
+# ---------- HEADERS DE SÉCURITÉ ----------
+<IfModule mod_headers.c>
+  Header always set X-Content-Type-Options "nosniff"
+  Header always set X-Frame-Options "SAMEORIGIN"
+  Header always set Referrer-Policy "strict-origin-when-cross-origin"
+  Header always set X-XSS-Protection "1; mode=block"
+  Header always set Strict-Transport-Security "max-age=31536000; includeSubDomains"
+  Header always set Permissions-Policy "geolocation=(self), camera=(), microphone=(self), payment=(self), usb=(), magnetometer=(), gyroscope=(), accelerometer=()"
+  Header always set Cross-Origin-Opener-Policy "same-origin"
+  Header always set Cross-Origin-Resource-Policy "same-site"
+  Header always set X-Permitted-Cross-Domain-Policies "none"
+
+  # ---------- CSP ----------
+  # Contexte : export statique Next.js servi par Apache. Next injecte des scripts
+  # en ligne (amorçage de l'hydratation, données RSC) : sans serveur Node pour
+  # générer un nonce, 'unsafe-inline' est inévitable pour script-src. Toutes les
+  # autres directives restent strictes.
+  #   - connect-src : API et WebSocket du site uniquement (même origine) ;
+  #   - img-src : tuiles cartographiques + données encodées + blobs d'aperçu ;
+  #   - object-src / frame-ancestors : verrouillés (pas de plugin, pas d'iframe).
+  Header always set Content-Security-Policy "default-src 'self'; base-uri 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://*.tile.openstreetmap.org https://*.basemaps.cartocdn.com https://demotiles.maplibre.org; font-src 'self' data:; connect-src 'self' https://agriintel360.lsgrouptogo.com wss://agriintel360.lsgrouptogo.com https://api.open-meteo.com https://geocoding-api.open-meteo.com https://archive-api.open-meteo.com https://demotiles.maplibre.org; worker-src 'self' blob:; frame-src 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; upgrade-insecure-requests"
+
+  # Les documents HTML ne doivent jamais être mis en cache (jetons, état de session).
+  <FilesMatch "\.html$">
+    Header always set Cache-Control "no-store, must-revalidate"
+  </FilesMatch>
+</IfModule>
+
+# ---------- PROTECTION DES FICHIERS SENSIBLES ----------
+<FilesMatch "^\.(env|deploy|htaccess|git)">
+  Require all denied
+</FilesMatch>
+<FilesMatch "^\.env\.">
+  Require all denied
+</FilesMatch>
+# Sources, journaux et sauvegardes ne doivent jamais être téléchargeables
+<FilesMatch "\.(log|sql|bak|sqlite|map|ts|tsx|md)$">
+  Require all denied
+</FilesMatch>
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  # Bloque l'accès direct aux dossiers de sauvegarde créés par le déploiement
+  RewriteRule ^_(frontend|api)-backup- - [F,L]
+</IfModule>
+<IfModule mod_php.c>
+  php_flag display_errors Off
+</IfModule>

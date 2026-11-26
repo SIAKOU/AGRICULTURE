@@ -1,0 +1,866 @@
+"""
+Authentication API endpoints
+"""
+
+import asyncio
+import secrets
+import base64
+import json
+import os
+from datetime import timedelta, datetime, timezone
+from urllib.parse import quote_plus as url_encode
+
+from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks, Request, UploadFile, File
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from fastapi.responses import RedirectResponse, JSONResponse
+import logging
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.sql import func
+from sqlalchemy import select
+from jose import jwt, JWTError
+from passlib.hash import bcrypt as _bcrypt
+
+from config.config import get_settings
+from config.database import get_db
+from src.services.auth import AuthService, get_current_user, get_current_active_user
+from src.services.email import send_verification_email, send_password_reset_email
+from src.services.session import session_service
+from src.services.redis import mark_totp_code_used
+from api.schemas.auth import (
+    UserCreate, UserLogin, UserLoginResponse, UserResponse, UserUpdate,
+    Token, PasswordReset, PasswordResetConfirm, PasswordChange,
+    EmailVerification, TokenData, TwoFactorSetup, TwoFactorVerify,
+    APIKey, APIKeyCreate, UserPreferences,
+)
+from api.models.sql.user import User
+from api.models.sql.api_keys import ApiKey
+
+settings = get_settings()
+router = APIRouter()
+bearer_scheme = HTTPBearer()
+logger = logging.getLogger(__name__)
+
+
+def _write_file(path: str, contents: bytes) -> None:
+    with open(path, "wb") as f:
+        f.write(contents)
+
+
+def serialize_user(user: User) -> UserResponse:
+    return UserResponse.model_validate({
+        "id": user.id,
+        "email": user.email,
+        "username": user.username,
+        "full_name": user.full_name,
+        "role": user.role,
+        "is_active": user.is_active,
+        "is_verified": user.is_verified,
+        "phone_number": user.phone_number,
+        "organization": user.organization,
+        "country": user.country,
+        "bio": user.bio,
+        "avatar_url": user.avatar_url,
+        "cover_url": user.cover_url,
+        "language": user.language,
+        "timezone": user.timezone,
+        "theme": user.theme,
+        "sector": user.sector,
+        "profile_role": user.profile_role,
+        "newsletter": user.newsletter,
+        "job_title": user.job_title,
+        "department": user.department,
+        "gender": user.gender,
+        "created_at": user.created_at,
+        "updated_at": user.updated_at,
+        "last_login": user.last_login,
+    })
+
+
+def _hash_api_key(raw_key: str) -> str:
+    return _bcrypt.hash(raw_key)
+
+
+def _verify_api_key(raw_key: str, key_hash: str) -> bool:
+    return _bcrypt.verify(raw_key, key_hash)
+
+
+# ── Registration & Login ──────────────────────────────────────────────────────
+
+@router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
+async def register_user(
+    user_data: UserCreate,
+    background_tasks: BackgroundTasks,
+    db: AsyncSession = Depends(get_db),
+):
+    existing = await AuthService.get_user_by_email(db, user_data.email)
+    if existing:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Email already registered")
+    existing = await AuthService.get_user_by_username(db, user_data.username)
+    if existing:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Username already taken")
+
+    user = await AuthService.create_user(db, user_data.model_dump())
+    token = AuthService.create_verification_token(user.id)
+    background_tasks.add_task(send_verification_email, user.email, token)
+    return serialize_user(user)
+
+
+@router.post("/login", response_model=UserLoginResponse)
+async def login_user(
+    request: Request,
+    user_credentials: UserLogin,
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        user = await AuthService.authenticate_user(db, user_credentials.username, user_credentials.password)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Login auth error for %s: %s", user_credentials.username, e, exc_info=True)
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Erreur d'authentification")
+    if not user:
+        await AuthService.update_failed_login_attempts(db, user_credentials.username)
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid credentials",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    try:
+        user_agent = request.headers.get("user-agent", "unknown")
+        ip_address = request.client.host if request.client else "0.0.0.0"
+        await session_service.create_session(str(user.id), user_agent, ip_address)
+    except Exception as e:
+        logger.warning("Session creation failed (non-fatal): %s", e)
+
+    access_token_expires = timedelta(
+        days=7 if user_credentials.remember_me else 0,
+        minutes=0 if user_credentials.remember_me else settings.JWT_ACCESS_TOKEN_EXPIRE_MINUTES,
+    )
+    token_data = {"sub": str(user.id), "username": user.username, "role": user.role.value}
+    access_token = AuthService.create_access_token(data=token_data, expires_delta=access_token_expires)
+    refresh_token = AuthService.create_refresh_token(data=token_data)
+
+    user_response = serialize_user(user)
+    response = JSONResponse(content={
+        "user": user_response.model_dump(mode='json'),
+        "access_token": access_token,
+        "refresh_token": refresh_token,
+        "expires_in": int(access_token_expires.total_seconds()),
+    })
+
+    # Set HttpOnly cookie for access_token — mitigates XSS token theft
+    cookie_max_age = int(access_token_expires.total_seconds())
+    response.set_cookie(
+        key="access_token",
+        value=access_token,
+        httponly=True,
+        secure=True,
+        samesite="lax",
+        max_age=cookie_max_age,
+        path="/",
+    )
+    response.set_cookie(
+        key="refresh_token",
+        value=refresh_token,
+        httponly=True,
+        secure=True,
+        samesite="lax",
+        max_age=settings.JWT_REFRESH_TOKEN_EXPIRE_DAYS * 86400,
+        path="/api/v1/auth/refresh",
+    )
+
+    return response
+
+
+# ── Session management ────────────────────────────────────────────────────────
+
+@router.get("/sessions")
+async def get_active_sessions(current_user: User = Depends(get_current_active_user)):
+    return await session_service.get_sessions(str(current_user.id))
+
+
+@router.delete("/sessions/{session_id}")
+async def revoke_session(
+    session_id: str, current_user: User = Depends(get_current_active_user)
+):
+    if not session_id.startswith(f"session:{current_user.id}"):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized")
+    await session_service.revoke_session(session_id)
+    return {"message": "Session revoked successfully"}
+
+
+@router.post("/sessions/revoke-all-others")
+async def revoke_all_other_sessions(
+    request: Request, current_user: User = Depends(get_current_active_user)
+):
+    user_agent = request.headers.get("user-agent", "unknown")
+    ip_address = request.client.host if request.client else "0.0.0.0"
+    current_session_id = f"session:{current_user.id}:{user_agent}:{ip_address}"
+    await session_service.revoke_all_other_sessions(str(current_user.id), current_session_id)
+    return {"message": "All other sessions revoked successfully"}
+
+
+# ── Token management ──────────────────────────────────────────────────────────
+
+@router.post("/refresh", response_model=Token)
+async def refresh_token(
+    credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme),
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        token_data = AuthService.verify_token(credentials.credentials, token_type="refresh")
+    except HTTPException:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid refresh token",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    user = await AuthService.get_user_by_id(db, token_data.user_id)
+    if not user or not user.is_active:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found or inactive")
+
+    new_token_data = {"sub": str(user.id), "username": user.username, "role": user.role.value}
+    access_token = AuthService.create_access_token(data=new_token_data)
+    new_refresh_token = AuthService.create_refresh_token(data=new_token_data)
+    return Token(
+        access_token=access_token,
+        refresh_token=new_refresh_token,
+        expires_in=settings.JWT_ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+    )
+
+
+from src.services.redis import add_token_to_blacklist
+
+
+@router.post("/logout")
+async def logout_user(
+    credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme),
+    current_user: User = Depends(get_current_active_user),
+):
+    token = credentials.credentials
+    try:
+        payload = jwt.decode(token, settings.JWT_SECRET_KEY, algorithms=[settings.JWT_ALGORITHM])
+        exp = payload.get("exp", 0)
+        remaining_time = datetime.fromtimestamp(exp, tz=timezone.utc) - datetime.now(timezone.utc)
+    except (JWTError, Exception):
+        remaining_time = timedelta(seconds=0)
+
+    if remaining_time.total_seconds() > 0:
+        await add_token_to_blacklist(token, remaining_time)
+    return {"message": "Successfully logged out"}
+
+
+# ── Profile ───────────────────────────────────────────────────────────────────
+
+@router.get("/me", response_model=UserResponse)
+async def get_current_user_info(current_user: User = Depends(get_current_active_user)):
+    return serialize_user(current_user)
+
+
+@router.put("/me", response_model=UserResponse)
+async def update_current_user(
+    user_update: UserUpdate,
+    current_user: User = Depends(get_current_active_user),
+    db: AsyncSession = Depends(get_db),
+):
+    update_data = user_update.model_dump(exclude_unset=True)
+    for field, value in update_data.items():
+        setattr(current_user, field, value)
+    await db.commit()
+    await db.refresh(current_user)
+    return serialize_user(current_user)
+
+
+@router.post("/change-password")
+async def change_password(
+    password_data: PasswordChange,
+    current_user: User = Depends(get_current_active_user),
+    db: AsyncSession = Depends(get_db),
+):
+    if not AuthService.verify_password(password_data.current_password, current_user.hashed_password):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Current password is incorrect")
+    current_user.hashed_password = AuthService.hash_password(password_data.new_password)
+    current_user.password_changed_at = datetime.now(timezone.utc)
+    await db.commit()
+    return {"message": "Password changed successfully"}
+
+
+# ── Password reset ────────────────────────────────────────────────────────────
+
+@router.post("/forgot-password")
+async def forgot_password(
+    password_reset: PasswordReset,
+    background_tasks: BackgroundTasks,
+    db: AsyncSession = Depends(get_db),
+):
+    user = await AuthService.get_user_by_email(db, password_reset.email)
+    if user:
+        token = AuthService.create_password_reset_token(user.id)
+        background_tasks.add_task(send_password_reset_email, user.email, token)
+    return {"message": "If an account with that email exists, a password reset link has been sent."}
+
+
+@router.post("/reset-password")
+async def reset_password(reset_data: PasswordResetConfirm, db: AsyncSession = Depends(get_db)):
+    try:
+        token_data = AuthService.verify_token(reset_data.token, token_type="password-reset")
+    except HTTPException:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid or expired token")
+    user = await AuthService.get_user_by_id(db, token_data.user_id)
+    if not user or not user.is_active:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+    user.hashed_password = AuthService.hash_password(reset_data.new_password)
+    user.password_changed_at = func.now()
+    await db.commit()
+    return {"message": "Password has been reset successfully"}
+
+
+# ── Email verification ────────────────────────────────────────────────────────
+
+@router.post("/verify-email")
+async def verify_email(verification: EmailVerification, db: AsyncSession = Depends(get_db)):
+    try:
+        token_data = AuthService.verify_token(verification.token, token_type="email-verification")
+    except HTTPException:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid or expired token")
+    user = await AuthService.get_user_by_id(db, token_data.user_id)
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+    if user.is_verified:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Email already verified")
+    user.is_verified = True
+    user.is_active = True
+    await db.commit()
+    return {"message": "Email verified successfully"}
+
+
+@router.post("/resend-verification")
+async def resend_verification_email(
+    background_tasks: BackgroundTasks,
+    current_user: User = Depends(get_current_user),
+):
+    if current_user.is_verified:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Email already verified")
+    token = AuthService.create_verification_token(current_user.id)
+    background_tasks.add_task(send_verification_email, current_user.email, token)
+    return {"message": "A new verification email has been sent."}
+
+
+# ── Availability checks ───────────────────────────────────────────────────────
+
+@router.post("/check-email")
+async def check_email_availability(email_data: dict, db: AsyncSession = Depends(get_db)):
+    email = email_data.get("email")
+    if not email:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Email is required")
+    existing = await AuthService.get_user_by_email(db, email)
+    if existing:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Email already registered")
+    return {"available": True}
+
+
+@router.post("/check-username")
+async def check_username_availability(username_data: dict, db: AsyncSession = Depends(get_db)):
+    username = username_data.get("username")
+    if not username:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Username is required")
+    existing = await AuthService.get_user_by_username(db, username)
+    if existing:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Username already taken")
+    return {"available": True}
+
+
+# ── Avatar / Cover ────────────────────────────────────────────────────────────
+
+_ALLOWED_IMAGE_MIME = {"image/jpeg", "image/png", "image/gif", "image/webp"}
+_MAX_IMAGE_BYTES = 5 * 1024 * 1024  # 5 MB
+
+async def _validate_and_save_image(upload: UploadFile, subdir: str, user_id: str) -> str:
+    mime = (upload.content_type or "application/octet-stream").split(";")[0].strip()
+    if mime not in _ALLOWED_IMAGE_MIME:
+        raise HTTPException(status_code=400, detail=f"Type d'image non autorisé: {mime}")
+
+    ext_map = {"image/jpeg": ".jpg", "image/png": ".png", "image/gif": ".gif", "image/webp": ".webp"}
+    ext = ext_map.get(mime, ".jpg")
+
+    safe_name = f"{user_id}{ext}"
+    subdir_path = os.path.join(settings.UPLOAD_DIR, subdir)
+    os.makedirs(subdir_path, exist_ok=True)
+
+    contents = await upload.read()
+    if len(contents) > _MAX_IMAGE_BYTES:
+        raise HTTPException(status_code=400, detail="Image trop volumineuse (max 5 MB)")
+
+    file_path = os.path.normpath(os.path.join(subdir_path, safe_name))
+    if not file_path.startswith(os.path.normpath(subdir_path)):
+        raise HTTPException(status_code=400, detail="Chemin de fichier invalide")
+
+    loop = asyncio.get_running_loop()
+    await loop.run_in_executor(None, lambda: _write_file(file_path, contents))
+
+    return f"/static/{subdir}/{safe_name}"
+
+
+@router.post("/avatar", response_model=UserResponse)
+async def upload_avatar(
+    avatar: UploadFile = File(...),
+    current_user: User = Depends(get_current_active_user),
+    db: AsyncSession = Depends(get_db),
+):
+    url = _validate_and_save_image(avatar, "avatars", str(current_user.id))
+    current_user.avatar_url = url
+    await db.commit()
+    await db.refresh(current_user)
+    return serialize_user(current_user)
+
+
+@router.post("/cover", response_model=UserResponse)
+async def upload_cover(
+    cover: UploadFile = File(...),
+    current_user: User = Depends(get_current_active_user),
+    db: AsyncSession = Depends(get_db),
+):
+    url = _validate_and_save_image(cover, "covers", str(current_user.id))
+    current_user.cover_url = url
+    await db.commit()
+    await db.refresh(current_user)
+    return serialize_user(current_user)
+
+
+# ── Preferences ───────────────────────────────────────────────────────────────
+
+@router.get("/preferences")
+async def get_user_preferences(current_user: User = Depends(get_current_active_user)):
+    prefs = current_user.notification_prefs or {}
+    return {
+        "language": current_user.language,
+        "timezone": current_user.timezone,
+        "theme": current_user.theme,
+        "notifications": prefs.get("notifications", {}),
+        "privacy": prefs.get("privacy", {}),
+        "community": prefs.get("community", {}),
+    }
+
+
+@router.put("/preferences")
+async def update_user_preferences(
+    preferences: dict,
+    current_user: User = Depends(get_current_active_user),
+    db: AsyncSession = Depends(get_db),
+):
+    import copy
+    from sqlalchemy.orm.attributes import flag_modified
+
+    if "language" in preferences:
+        current_user.language = preferences["language"]
+    if "timezone" in preferences:
+        current_user.timezone = preferences["timezone"]
+    if "theme" in preferences:
+        current_user.theme = preferences["theme"]
+
+    if "notifications" in preferences or "privacy" in preferences or "community" in preferences:
+        prefs = copy.deepcopy(current_user.notification_prefs or {})
+        if "notifications" in preferences:
+            prefs["notifications"] = preferences["notifications"]
+        if "privacy" in preferences:
+            prefs["privacy"] = preferences["privacy"]
+        if "community" in preferences:
+            prefs["community"] = preferences["community"]
+        current_user.notification_prefs = prefs
+        flag_modified(current_user, "notification_prefs")
+
+    await db.commit()
+    return {
+        "language": current_user.language,
+        "timezone": current_user.timezone,
+        "theme": current_user.theme,
+        "notifications": (current_user.notification_prefs or {}).get("notifications", {}),
+        "privacy": (current_user.notification_prefs or {}).get("privacy", {}),
+        "community": (current_user.notification_prefs or {}).get("community", {}),
+    }
+
+
+# ── Account deletion ──────────────────────────────────────────────────────────
+
+@router.post("/delete-account")
+async def delete_account(
+    data: dict,
+    current_user: User = Depends(get_current_active_user),
+    db: AsyncSession = Depends(get_db),
+):
+    password = data.get("password")
+    if not password or not AuthService.verify_password(password, current_user.hashed_password):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Mot de passe incorrect")
+    await db.delete(current_user)
+    await db.commit()
+    return {"message": "Compte supprimé avec succès"}
+
+
+# ── 2FA (TOTP) — persisté en base ────────────────────────────────────────────
+
+@router.post("/2fa/enable", response_model=TwoFactorSetup)
+async def enable_2fa(
+    data: dict = {},
+    current_user: User = Depends(get_current_active_user),
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        import pyotp
+    except ImportError:
+        raise HTTPException(status_code=501, detail="pyotp non installé. Exécutez: pip install pyotp")
+
+    secret = pyotp.random_base32()
+    backup_codes = [secrets.token_hex(4).upper() for _ in range(8)]
+
+    current_user.totp_secret = secret
+    current_user.totp_enabled = False
+    current_user.totp_backup_codes = backup_codes
+    await db.commit()
+
+    totp = pyotp.TOTP(secret)
+    qr_url = totp.provisioning_uri(name=current_user.email, issuer_name="AgriIntel360")
+    return TwoFactorSetup(secret_key=secret, qr_code_url=qr_url, backup_codes=backup_codes)
+
+
+@router.post("/2fa/verify")
+async def verify_2fa(
+    body: TwoFactorVerify,
+    current_user: User = Depends(get_current_active_user),
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        import pyotp
+    except ImportError:
+        raise HTTPException(status_code=501, detail="pyotp non installé.")
+
+    if not current_user.totp_secret:
+        raise HTTPException(status_code=400, detail="2FA non initialisé. Appelez /2fa/enable d'abord.")
+
+    totp = pyotp.TOTP(current_user.totp_secret)
+    backup_codes: list = list(current_user.totp_backup_codes or [])
+
+    if not totp.verify(body.code, valid_window=1):
+        if body.code.upper() not in backup_codes:
+            raise HTTPException(status_code=400, detail="Code TOTP invalide")
+        backup_codes.remove(body.code.upper())
+        current_user.totp_backup_codes = backup_codes
+    else:
+        # Prevent replay: reject codes already used within the validity window
+        first_use = await mark_totp_code_used(str(current_user.id), body.code, ttl_seconds=90)
+        if not first_use:
+            raise HTTPException(status_code=400, detail="Code TOTP déjà utilisé")
+
+    current_user.totp_enabled = True
+    await db.commit()
+    return {
+        "message": "2FA activé avec succès",
+        "enabled": True,
+        "backup_codes_remaining": len(backup_codes),
+    }
+
+
+@router.post("/2fa/disable")
+async def disable_2fa(
+    data: dict = {},
+    current_user: User = Depends(get_current_active_user),
+    db: AsyncSession = Depends(get_db),
+):
+    password = data.get("password", "")
+    if password and not AuthService.verify_password(password, current_user.hashed_password):
+        raise HTTPException(status_code=400, detail="Mot de passe incorrect")
+    current_user.totp_secret = None
+    current_user.totp_enabled = False
+    current_user.totp_backup_codes = None
+    await db.commit()
+    return {"message": "2FA désactivé"}
+
+
+@router.get("/2fa/status")
+async def get_2fa_status(current_user: User = Depends(get_current_active_user)):
+    backup_count = len(current_user.totp_backup_codes or []) if current_user.totp_enabled else 0
+    return {
+        "enabled": current_user.totp_enabled,
+        "method": "app" if current_user.totp_enabled else None,
+        "backup_codes_remaining": backup_count,
+    }
+
+
+# ── Activity log ──────────────────────────────────────────────────────────────
+
+@router.get("/activity")
+async def get_user_activity(
+    page: int = 1,
+    limit: int = 10,
+    current_user: User = Depends(get_current_active_user),
+):
+    """Login activity — returns empty list until ActivityLog table is implemented."""
+    return {"data": [], "total": 0, "page": page, "limit": limit}
+
+
+# ── API Keys — persistées en base, clé en clair affichée une seule fois ───────
+
+@router.post("/api-keys")
+async def create_api_key(
+    body: APIKeyCreate,
+    current_user: User = Depends(get_current_active_user),
+    db: AsyncSession = Depends(get_db),
+):
+    raw_key = f"agri_{secrets.token_urlsafe(32)}"
+    key_hash = _hash_api_key(raw_key)
+    key_prefix = raw_key[:12]
+
+    expires_at = (
+        datetime.now(timezone.utc) + timedelta(days=body.expires_days)
+        if body.expires_days else None
+    )
+
+    api_key = ApiKey(
+        user_id=current_user.id,
+        name=body.name,
+        key_hash=key_hash,
+        key_prefix=key_prefix,
+        is_active=True,
+        expires_at=expires_at,
+    )
+    db.add(api_key)
+    await db.commit()
+    await db.refresh(api_key)
+
+    return {
+        "id": str(api_key.id),
+        "name": api_key.name,
+        "key": raw_key,
+        "key_prefix": key_prefix,
+        "is_active": api_key.is_active,
+        "expires_at": api_key.expires_at.isoformat() if api_key.expires_at else None,
+        "created_at": api_key.created_at.isoformat(),
+        "warning": "Copiez cette clé maintenant — elle ne sera plus affichée en clair.",
+    }
+
+
+@router.get("/api-keys")
+async def list_api_keys(
+    current_user: User = Depends(get_current_active_user),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(
+        select(ApiKey).where(ApiKey.user_id == current_user.id).order_by(ApiKey.created_at.desc())
+    )
+    keys = result.scalars().all()
+    return {
+        "api_keys": [
+            {
+                "id": str(k.id),
+                "name": k.name,
+                "key_prefix": k.key_prefix + "...",
+                "is_active": k.is_active,
+                "expires_at": k.expires_at.isoformat() if k.expires_at else None,
+                "last_used_at": k.last_used_at.isoformat() if k.last_used_at else None,
+                "created_at": k.created_at.isoformat(),
+            }
+            for k in keys
+        ],
+        "count": len(keys),
+    }
+
+
+@router.delete("/api-keys/{key_id}")
+async def delete_api_key(
+    key_id: str,
+    current_user: User = Depends(get_current_active_user),
+    db: AsyncSession = Depends(get_db),
+):
+    import uuid as _uuid
+    result = await db.execute(
+        select(ApiKey).where(
+            ApiKey.id == _uuid.UUID(key_id),
+            ApiKey.user_id == current_user.id,
+        )
+    )
+    api_key = result.scalar_one_or_none()
+    if not api_key:
+        raise HTTPException(status_code=404, detail="Clé API non trouvée")
+    await db.delete(api_key)
+    await db.commit()
+    return {"message": "Clé API révoquée"}
+
+
+# ── OAuth helpers ─────────────────────────────────────────────────────────────
+
+def _build_backend_url() -> str:
+    if settings.is_production:
+        return settings.FRONTEND_URL.rstrip("/")
+    return "http://localhost:8000"
+
+
+async def _oauth_login_or_create(db: AsyncSession, email: str, user_info: dict, provider: str) -> User:
+    user = await AuthService.get_user_by_email(db, email)
+    if not user:
+        import re as _re
+        base_username = _re.sub(r"[^a-zA-Z0-9_]", "_", email.split("@")[0])[:40]
+        username = base_username
+        suffix = 1
+        while await AuthService.get_user_by_username(db, username):
+            username = f"{base_username}_{suffix}"
+            suffix += 1
+        user = await AuthService.create_user(db, {
+            "email": email,
+            "username": username,
+            "full_name": user_info.get("name", username),
+            "password": secrets.token_urlsafe(32),
+            "is_verified": True,
+            "is_active": True,
+        })
+    return user
+
+
+def _oauth_token_response(user: User) -> dict:
+    token_data = {"sub": str(user.id), "username": user.username, "role": user.role.value}
+    access_token = AuthService.create_access_token(data=token_data)
+    refresh_token = AuthService.create_refresh_token(data=token_data)
+    return {
+        "access_token": access_token,
+        "refresh_token": refresh_token,
+        "token_type": "bearer",
+        "user": serialize_user(user),
+    }
+
+
+def _oauth_redirect(frontend_url: str, user: User) -> RedirectResponse:
+    response_data = _oauth_token_response(user)
+    token_json = json.dumps({
+        "access_token": response_data["access_token"],
+        "refresh_token": response_data["refresh_token"],
+        "user": {
+            "id": str(user.id),
+            "email": user.email,
+            "username": user.username,
+            "full_name": user.full_name,
+            "role": user.role.value if hasattr(user.role, 'value') else str(user.role),
+            "is_verified": user.is_verified,
+            "is_active": user.is_active,
+            "avatar_url": user.avatar_url,
+            "language": user.language or "fr",
+            "created_at": str(user.created_at),
+        },
+    })
+    encoded = base64.urlsafe_b64encode(token_json.encode()).decode()
+    response = RedirectResponse(url=f"{frontend_url}/auth/callback?data={encoded}")
+    response.set_cookie(
+        key="access_token",
+        value=response_data["access_token"],
+        httponly=True,
+        secure=True,
+        samesite="lax",
+        max_age=3600,
+        path="/",
+    )
+    return response
+
+
+# ── OAuth Google ──────────────────────────────────────────────────────────────
+
+@router.get("/oauth/google")
+async def oauth_google_redirect(request: Request):
+    if not settings.GOOGLE_CLIENT_ID:
+        error_msg = url_encode("Google OAuth non configuré. Contactez l'administrateur.")
+        return RedirectResponse(url=f"{settings.FRONTEND_URL}/login?error={error_msg}")
+    try:
+        from authlib.integrations.starlette_client import OAuth
+        oauth = OAuth()
+        oauth.register(
+            name="google",
+            client_id=settings.GOOGLE_CLIENT_ID,
+            client_secret=settings.GOOGLE_CLIENT_SECRET,
+            server_metadata_url="https://accounts.google.com/.well-known/openid-configuration",
+            client_kwargs={"scope": "openid email profile"},
+        )
+        redirect_uri = f"{_build_backend_url()}/api/v1/auth/oauth/google/callback"
+        return await oauth.google.authorize_redirect(request, redirect_uri)
+    except ImportError:
+        error_msg = url_encode("Service OAuth temporairement indisponible.")
+        return RedirectResponse(url=f"{settings.FRONTEND_URL}/login?error={error_msg}")
+
+
+@router.get("/oauth/google/callback")
+async def oauth_google_callback(request: Request, db: AsyncSession = Depends(get_db)):
+    if not settings.GOOGLE_CLIENT_ID:
+        raise HTTPException(status_code=501, detail="OAuth Google non configuré")
+    try:
+        from authlib.integrations.starlette_client import OAuth
+        oauth = OAuth()
+        oauth.register(
+            name="google",
+            client_id=settings.GOOGLE_CLIENT_ID,
+            client_secret=settings.GOOGLE_CLIENT_SECRET,
+            server_metadata_url="https://accounts.google.com/.well-known/openid-configuration",
+            client_kwargs={"scope": "openid email profile"},
+        )
+        token = await oauth.google.authorize_access_token(request)
+        user_info = token.get("userinfo") or await oauth.google.userinfo(token=token)
+    except Exception as e:
+        return RedirectResponse(url=f"{settings.FRONTEND_URL}/login?error={url_encode(str(e))}")
+
+    email = user_info.get("email")
+    if not email:
+        return RedirectResponse(url=f"{settings.FRONTEND_URL}/login?error=Email+non+fourni")
+
+    user = await _oauth_login_or_create(db, email, user_info, "google")
+    return _oauth_redirect(settings.FRONTEND_URL, user)
+
+
+# ── OAuth Microsoft ───────────────────────────────────────────────────────────
+
+@router.get("/oauth/microsoft")
+async def oauth_microsoft_redirect(request: Request):
+    if not settings.MICROSOFT_CLIENT_ID:
+        error_msg = url_encode("Microsoft OAuth non configuré. Contactez l'administrateur.")
+        return RedirectResponse(url=f"{settings.FRONTEND_URL}/login?error={error_msg}")
+    try:
+        from authlib.integrations.starlette_client import OAuth
+        oauth = OAuth()
+        oauth.register(
+            name="microsoft",
+            client_id=settings.MICROSOFT_CLIENT_ID,
+            client_secret=settings.MICROSOFT_CLIENT_SECRET,
+            server_metadata_url="https://login.microsoftonline.com/common/v2.0/.well-known/openid-configuration",
+            client_kwargs={"scope": "openid email profile User.Read"},
+        )
+        redirect_uri = f"{_build_backend_url()}/api/v1/auth/oauth/microsoft/callback"
+        return await oauth.microsoft.authorize_redirect(request, redirect_uri)
+    except ImportError:
+        error_msg = url_encode("Service OAuth temporairement indisponible.")
+        return RedirectResponse(url=f"{settings.FRONTEND_URL}/login?error={error_msg}")
+
+
+@router.get("/oauth/microsoft/callback")
+async def oauth_microsoft_callback(request: Request, db: AsyncSession = Depends(get_db)):
+    if not settings.MICROSOFT_CLIENT_ID:
+        raise HTTPException(status_code=501, detail="OAuth Microsoft non configuré")
+    try:
+        from authlib.integrations.starlette_client import OAuth
+        oauth = OAuth()
+        oauth.register(
+            name="microsoft",
+            client_id=settings.MICROSOFT_CLIENT_ID,
+            client_secret=settings.MICROSOFT_CLIENT_SECRET,
+            server_metadata_url="https://login.microsoftonline.com/common/v2.0/.well-known/openid-configuration",
+            client_kwargs={"scope": "openid email profile User.Read"},
+        )
+        token = await oauth.microsoft.authorize_access_token(request)
+        user_info = token.get("userinfo") or await oauth.microsoft.userinfo(token=token)
+    except Exception as e:
+        return RedirectResponse(url=f"{settings.FRONTEND_URL}/login?error={url_encode(str(e))}")
+
+    email = (
+        user_info.get("email")
+        or user_info.get("mail")
+        or user_info.get("userPrincipalName")
+    )
+    if not email:
+        return RedirectResponse(url=f"{settings.FRONTEND_URL}/login?error=Email+non+fourni")
+
+    name = user_info.get("name") or user_info.get("displayName") or email.split("@")[0]
+    user = await _oauth_login_or_create(db, email, {"name": name}, "microsoft")
+    return _oauth_redirect(settings.FRONTEND_URL, user)

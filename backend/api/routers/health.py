@@ -1,0 +1,96 @@
+"""
+Health check endpoints
+"""
+
+from fastapi import APIRouter, Depends
+from datetime import datetime, timezone
+try:
+    import psutil
+except Exception:
+    psutil = None
+import platform
+
+from config.database import get_all_health_status
+from config.config import get_settings
+
+settings = get_settings()
+
+health_router = APIRouter(tags=["Health"])
+
+
+@health_router.get("")
+async def health_check():
+    """Basic health check"""
+    return {
+        "status": "healthy",
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "service": settings.PROJECT_NAME,
+        "version": settings.VERSION
+    }
+
+
+@health_router.get("/ping")
+async def ping():
+    """
+    Sonde ultra-légère (aucun accès base) utilisée par l'écran d'administration.
+    Elle répond 200 dès que le processus FastAPI est vivant.
+    """
+    return {"pong": True, "timestamp": datetime.now(timezone.utc).isoformat()}
+
+
+@health_router.get("/detailed")
+async def detailed_health_check():
+    """Detailed health check with database status"""
+    db_status = await get_all_health_status()
+    
+    # System information (psutil optional)
+    if psutil:
+        cpu = psutil.cpu_percent()
+        mem = psutil.virtual_memory().percent
+        disk = psutil.disk_usage('/').percent if platform.system() != 'Windows' else psutil.disk_usage('C:\\').percent
+    else:
+        cpu = None
+        mem = None
+        disk = None
+
+    system_info = {
+        "platform": platform.system(),
+        "python_version": platform.python_version(),
+        "cpu_usage": cpu,
+        "memory_usage": mem,
+        "disk_usage": disk
+    }
+    
+    # Overall health status
+    all_healthy = all(db_status.values())
+    
+    return {
+        "status": "healthy" if all_healthy else "degraded",
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "service": settings.PROJECT_NAME,
+        "version": settings.VERSION,
+        "environment": settings.ENVIRONMENT,
+        "databases": db_status,
+        "system": system_info
+    }
+
+
+@health_router.get("/ready")
+async def readiness_check():
+    """Kubernetes readiness probe"""
+    db_status = await get_all_health_status()
+    
+    # Service is ready if at least PostgreSQL is healthy
+    ready = db_status.get("postgresql", False)
+    
+    if ready:
+        return {"status": "ready"}
+    else:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=503, detail="Service not ready")
+
+
+@health_router.get("/live")
+async def liveness_check():
+    """Kubernetes liveness probe"""
+    return {"status": "alive", "timestamp": datetime.now(timezone.utc).isoformat()}

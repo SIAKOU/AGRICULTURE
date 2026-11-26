@@ -1,0 +1,110 @@
+# ============================================
+# ENVIRONNEMENTS VIRTUELS
+# ============================================
+.venv/
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+
+# ============================================
+# PYTHON CACHE
+# ============================================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# ============================================
+# FICHIERS D'ENVIRONNEMENT
+# ============================================
+.env
+.env.local
+.env.*.local
+*.env
+.envrc
+.env.docker
+
+# ============================================
+# BASES DE DONNÉES LOCALES
+# ============================================
+*.db
+*.sqlite
+*.sqlite3
+
+# ============================================
+# LOGS
+# ============================================
+*.log
+logs/
+log/
+
+# ============================================
+# IDE / ÉDITEURS
+# ============================================
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.project
+.pydevproject
+
+# ============================================
+# SYSTÈME D'EXPLOITATION
+# ============================================
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ============================================
+# TESTS & COVERAGE
+# ============================================
+.coverage
+htmlcov/
+.tox/
+.nox/
+.pytest_cache/
+coverage.xml
+*.cover
+.hypothesis/
+
+# ============================================
+# DOCKER
+# ============================================
+docker-compose.override.yml
+
+# ============================================
+# ML / DATA
+# ============================================
+mlruns/
+*.pkl
+*.h5
+*.joblib
+data/raw/
+data/processed/
+
+# ============================================
+# AIRFLOW
+# ============================================
+airflow.cfg
+airflow.db
+unittests.cfg.env.docker

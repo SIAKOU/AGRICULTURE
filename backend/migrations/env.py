@@ -1,0 +1,94 @@
+# -*- coding: utf-8 -*-
+"""
+Main Alembic environment configuration.
+"""
+
+import os
+import sys
+from logging.config import fileConfig
+
+from sqlalchemy import create_engine
+
+from alembic import context
+
+# Add the project root to the Python path
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+
+from config.config import get_settings
+from api.models.sql.base import Base
+from api.models.sql import (  # noqa: F401  - import for metadata side effects
+    User,
+    FileShare,
+    FileAttachment,
+    FileFolder,
+    FileFolderItem,
+    FilePermission,
+    FileActivity,
+    Group,
+    Post,
+    Comment,
+    Reaction,
+    GroupInvitation,
+    GroupJoinRequest,
+    Actor,
+    StagingProduction,
+    StagingWeather,
+    StagingEconomic,
+    MalaboYieldIndicator,
+    Country,
+    Crop,
+    Production,
+    Alert,
+    PriceAlert,
+    Report,
+    SubscriptionPlan,
+    UserSubscription,
+    Invoice,
+)
+
+# This is the Alembic Config object, which provides
+# access to the values within the .ini file in use.
+config = context.config
+
+# Interpret the config file for Python logging.
+if config.config_file_name is not None:
+    fileConfig(config.config_file_name)
+
+# Set the target metadata for autogenerate
+target_metadata = Base.metadata
+
+
+def run_migrations_offline() -> None:
+    """Run migrations in 'offline' mode."""
+    settings = get_settings()
+    url = settings.database_url_sync
+    context.configure(
+        url=url,
+        target_metadata=target_metadata,
+        literal_binds=True,
+        dialect_opts={"paramstyle": "named"},
+    )
+
+    with context.begin_transaction():
+        context.run_migrations()
+
+
+def run_migrations_online() -> None:
+    """Run migrations in 'online' mode."""
+    settings = get_settings()
+    engine = create_engine(
+        settings.database_url_sync,
+        connect_args={"options": "-c statement_timeout=60000"},
+    )
+
+    with engine.connect() as connection:
+        context.configure(connection=connection, target_metadata=target_metadata)
+
+        with context.begin_transaction():
+            context.run_migrations()
+
+
+if context.is_offline_mode():
+    run_migrations_offline()
+else:
+    run_migrations_online()

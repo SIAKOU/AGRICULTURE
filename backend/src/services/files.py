@@ -1,0 +1,896 @@
+"""
+Service de gestion des fichiers avec support multi-stockage
+"""
+
+import asyncio
+import os
+import uuid
+import logging
+from io import BytesIO
+from datetime import datetime, timezone
+from typing import Optional, List, Dict, Any, Tuple
+from pathlib import Path
+
+from fastapi import UploadFile, HTTPException, status
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select, func, and_, or_
+import aiofiles
+# Make PIL and magic library imports optional
+try:
+    from PIL import Image
+    PIL_AVAILABLE = True
+except ImportError:
+    Image = None
+    PIL_AVAILABLE = False
+
+try:
+    import cloudinary
+    import cloudinary.uploader
+    CLOUDINARY_AVAILABLE = True
+except ImportError:
+    cloudinary = None
+    CLOUDINARY_AVAILABLE = False
+
+try:
+    import magic
+    MAGIC_AVAILABLE = True
+except ImportError:
+    magic = None
+    MAGIC_AVAILABLE = False
+
+from config.config import get_settings
+from api.models.sql.files import (
+    FileShare, FileFolder, FileFolderItem,
+    FilePermission, FileActivity, FileType, FileStatus, StorageProvider
+)
+from api.models.sql.user import User
+from api.schemas.files import (
+    FileResponse, FileCreate, FileUpdate, FolderResponse,
+    FileUploadRequest, FileStats, FileSearchParams
+)
+
+settings = get_settings()
+logger = logging.getLogger(__name__)
+
+
+class FileValidationError(Exception):
+    """Exception pour les erreurs de validation de fichiers"""
+    pass
+
+
+class StorageService:
+    """Service de stockage de fichiers"""
+    
+    def __init__(self):
+        self.upload_dir = Path(settings.UPLOAD_DIR)
+        self.upload_dir.mkdir(parents=True, exist_ok=True)
+        self.cloudinary_enabled = settings.cloudinary_active
+        
+        # Configuration des types de fichiers autorisés
+        self.allowed_types = {
+            'image': ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/bmp'],
+            'video': ['video/mp4', 'video/avi', 'video/mov', 'video/wmv', 'video/webm'],
+            'audio': ['audio/mp3', 'audio/wav', 'audio/ogg', 'audio/m4a'],
+            'document': [
+                'application/pdf', 'text/plain', 'text/csv',
+                'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                'application/vnd.ms-excel', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                'application/vnd.ms-powerpoint', 'application/vnd.openxmlformats-officedocument.presentationml.presentation'
+            ],
+            'archive': ['application/zip', 'application/x-rar-compressed', 'application/x-7z-compressed']
+        }
+        
+        # Taille maximale par type (en octets)
+        self.max_sizes = {
+            'image': 10 * 1024 * 1024,  # 10MB
+            'video': 100 * 1024 * 1024,  # 100MB
+            'audio': 50 * 1024 * 1024,   # 50MB
+            'document': 25 * 1024 * 1024,  # 25MB
+            'archive': 100 * 1024 * 1024,   # 100MB
+            'other': 10 * 1024 * 1024      # 10MB
+        }
+    
+    def validate_file(self, file: UploadFile, file_type: FileType, content: bytes | None = None) -> None:
+        """Valide un fichier avant upload"""
+        
+        # Vérifier la taille (from UploadFile.size or actual bytes)
+        max_size = self.max_sizes.get(file_type.value, self.max_sizes['other'])
+        actual_size = file.size or (len(content) if content else 0)
+        if actual_size > max_size:
+            raise FileValidationError(f"Fichier trop volumineux. Taille maximale: {max_size // (1024*1024)}MB")
+        
+        # Vérifier le type MIME
+        mime = (file.content_type or "application/octet-stream").split(";")[0].strip()
+        allowed_mimes = []
+        for mime_list in self.allowed_types.values():
+            allowed_mimes.extend(mime_list)
+        
+        if mime not in allowed_mimes:
+            raise FileValidationError(f"Type de fichier non autorisé: {mime}")
+        
+        # Vérifier l'extension
+        file_ext = Path(file.filename or "file").suffix.lower()
+        dangerous_extensions = {
+            '.exe', '.bat', '.cmd', '.scr', '.pif', '.vbs', '.js',
+            '.php', '.php3', '.php4', '.php5', '.phtml',
+            '.asp', '.aspx', '.jsp', '.cgi', '.sh', '.py', '.rb', '.pl',
+        }
+        if file_ext in dangerous_extensions:
+            raise FileValidationError(f"Extension de fichier dangereuse: {file_ext}")
+    
+    def determine_file_type(self, mime_type: str) -> FileType:
+        """Détermine le type de fichier basé sur le MIME type"""
+        
+        for file_type, mime_types in self.allowed_types.items():
+            if mime_type in mime_types:
+                return FileType(file_type)
+        
+        return FileType.OTHER
+    
+    def generate_filename(self, original_name: str, user_id: str) -> str:
+        """Génère un nom de fichier unique"""
+        
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        file_uuid = str(uuid.uuid4())[:8]
+        file_ext = Path(original_name).suffix.lower()
+        
+        return f"{user_id}_{timestamp}_{file_uuid}{file_ext}"
+    
+    async def save_file(self, file: UploadFile, filename: str, content: bytes | None = None) -> Tuple[str, str]:
+        """Save a file either locally or to Cloudinary."""
+        if content is None:
+            content = await file.read()
+        if self.cloudinary_enabled:
+            return await self._save_file_cloudinary(filename, content)
+
+        return await self._save_file_local(filename, content)
+
+    async def _save_file_local(self, filename: str, content: bytes) -> Tuple[str, str]:
+        """Sauvegarde un fichier sur le disque"""
+        date_path = datetime.now().strftime("%Y/%m/%d")
+        full_dir = self.upload_dir / date_path
+        full_dir.mkdir(parents=True, exist_ok=True)
+        
+        file_path = full_dir / filename
+        storage_url = f"/static/{date_path}/{filename}"
+        
+        async with aiofiles.open(file_path, 'wb') as out_file:
+            await out_file.write(content)
+        
+        return str(file_path), storage_url
+
+    async def _save_file_cloudinary(self, filename: str, content: bytes) -> Tuple[str, str]:
+        """Sauvegarde un fichier sur Cloudinary."""
+        if not CLOUDINARY_AVAILABLE:
+            raise FileValidationError("Cloudinary n'est pas installé sur le serveur")
+
+        file_stream = BytesIO(content)
+        public_id = f"{settings.CLOUDINARY_UPLOAD_FOLDER}/{filename.rsplit('.', 1)[0]}"
+
+        try:
+            result = await asyncio.to_thread(
+                cloudinary.uploader.upload,
+                file_stream,
+                public_id=public_id,
+                folder=settings.CLOUDINARY_UPLOAD_FOLDER,
+                resource_type="auto",
+                use_filename=False,
+                overwrite=True,
+                unique_filename=False,
+            )
+        except Exception as upload_exc:
+            raise HTTPException(status_code=500, detail=f"Erreur Cloudinary: {upload_exc}")
+
+        storage_url = result.get("secure_url") or result.get("url")
+        public_id_value = result.get("public_id") or public_id
+        return public_id_value, storage_url
+
+    async def delete_file(self, file_path: str, storage_provider: Optional[StorageProvider] = None) -> bool:
+        """Supprime un fichier du stockage local ou distant"""
+        if storage_provider == StorageProvider.CLOUDINARY:
+            return await self._delete_file_cloudinary(file_path)
+
+        try:
+            if os.path.exists(file_path):
+                os.remove(file_path)
+                return True
+        except Exception as e:
+            logger.error("Erreur suppression fichier %s: %s", file_path, e)
+        
+        return False
+
+    async def _delete_file_cloudinary(self, public_id: str) -> bool:
+        if not CLOUDINARY_AVAILABLE:
+            return False
+
+        try:
+            await asyncio.to_thread(
+                cloudinary.uploader.destroy,
+                public_id,
+                resource_type="auto"
+            )
+            return True
+        except Exception as e:
+            logger.error("Erreur suppression Cloudinary %s: %s", public_id, e)
+            return False
+    
+    def extract_metadata(self, file_path: str, mime_type: str) -> Dict[str, Any]:
+        """Extrait les métadonnées d'un fichier"""
+        
+        metadata = {}
+        
+        # Skip metadata extraction if magic library is not available
+        if not MAGIC_AVAILABLE:
+            return metadata
+        
+        try:
+            if mime_type.startswith('image/'):
+                metadata.update(self._extract_image_metadata(file_path))
+            elif mime_type.startswith('video/'):
+                metadata.update(self._extract_video_metadata(file_path))
+            elif mime_type.startswith('audio/'):
+                metadata.update(self._extract_audio_metadata(file_path))
+        
+        except Exception as e:
+            logger.error("Erreur extraction métadonnées: %s", e)
+        
+        return metadata
+    
+    def _extract_image_metadata(self, file_path: str) -> Dict[str, Any]:
+        """Extrait les métadonnées d'une image"""
+        
+        try:
+            with Image.open(file_path) as img:
+                return {
+                    'width': img.width,
+                    'height': img.height,
+                    'format': img.format,
+                    'mode': img.mode,
+                    'has_transparency': img.mode in ('RGBA', 'LA') or 'transparency' in img.info
+                }
+        except Exception:
+            return {}
+    
+    @staticmethod
+    def _parse_fps(rate_str: str):
+        """Parse a fraction string like '30000/1001' safely — no eval."""
+        try:
+            if '/' in rate_str:
+                num, den = rate_str.split('/', 1)
+                d = float(den)
+                return float(num) / d if d != 0 else None
+            return float(rate_str)
+        except (ValueError, ZeroDivisionError):
+            return None
+
+    def _extract_video_metadata(self, file_path: str) -> Dict[str, Any]:
+        """Extrait les métadonnées d'une vidéo via ffprobe (subprocess)"""
+        try:
+            import subprocess
+            import json as _json
+
+            cmd = [
+                "ffprobe", "-v", "quiet", "-print_format", "json",
+                "-show_streams", "-show_format", file_path,
+            ]
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
+            if result.returncode != 0:
+                return {}
+
+            data = _json.loads(result.stdout)
+            fmt = data.get("format", {})
+            video_stream = next(
+                (s for s in data.get("streams", []) if s.get("codec_type") == "video"),
+                {},
+            )
+            return {
+                "width": video_stream.get("width"),
+                "height": video_stream.get("height"),
+                "duration": float(fmt.get("duration", 0)),
+                "format": fmt.get("format_name"),
+                "codec": video_stream.get("codec_name"),
+                "bitrate": int(fmt.get("bit_rate", 0)) if fmt.get("bit_rate") else None,
+                "fps": self._parse_fps(video_stream["r_frame_rate"]) if video_stream.get("r_frame_rate") else None,
+            }
+        except (FileNotFoundError, Exception):
+            # ffprobe not installed or other error — return empty metadata
+            return {}
+
+    def _extract_audio_metadata(self, file_path: str) -> Dict[str, Any]:
+        """Extrait les métadonnées d'un fichier audio via mutagen"""
+        try:
+            from mutagen import File as MutagenFile
+
+            audio = MutagenFile(file_path)
+            if audio is None:
+                return {}
+
+            info = audio.info
+            return {
+                "duration": getattr(info, "length", None),
+                "bitrate": getattr(info, "bitrate", None),
+                "sample_rate": getattr(info, "sample_rate", None),
+                "channels": getattr(info, "channels", None),
+                "format": type(audio).__name__,
+            }
+        except ImportError:
+            return {}
+        except Exception:
+            return {}
+
+
+class FileService:
+    """Service principal de gestion des fichiers"""
+    
+    def __init__(self):
+        self.storage = StorageService()
+    
+    async def upload_file(
+        self,
+        file: UploadFile,
+        user_id: str,
+        upload_request: FileUploadRequest,
+        db: AsyncSession
+    ) -> FileResponse:
+        """Upload un fichier"""
+        
+        try:
+            content = await file.read()
+            mime = (file.content_type or "application/octet-stream").split(";")[0].strip()
+            file_type = self.storage.determine_file_type(mime)
+            self.storage.validate_file(file, file_type, content)
+            
+            filename = self.storage.generate_filename(file.filename, user_id)
+            file_path, storage_url = await self.storage.save_file(file, filename, content)
+            storage_provider = StorageProvider.CLOUDINARY if self.storage.cloudinary_enabled else StorageProvider.LOCAL
+            
+            # Extraire les métadonnées uniquement pour les fichiers locaux
+            metadata = {}
+            if storage_provider == StorageProvider.LOCAL:
+                metadata = self.storage.extract_metadata(file_path, file.content_type)
+            
+            # Créer l'enregistrement en base
+            file_record = FileShare(
+                original_name=file.filename,
+                filename=filename,
+                mime_type=file.content_type,
+                file_type=file_type,
+                file_size=file.size or 0,
+                file_path=file_path,
+                storage_provider=storage_provider,
+                storage_url=storage_url,
+                file_metadata=metadata,
+                description=upload_request.description,
+                alt_text=upload_request.alt_text,
+                is_public=upload_request.is_public,
+                is_downloadable=upload_request.is_downloadable,
+                status=FileStatus.READY,
+                uploaded_by=user_id
+            )
+            
+            db.add(file_record)
+            await db.commit()
+            await db.refresh(file_record)
+            
+            # Ajouter au dossier si spécifié
+            if upload_request.folder_id:
+                await self.add_file_to_folder(file_record.id, upload_request.folder_id, user_id, db)
+            
+            # Enregistrer l'activité
+            await self._log_activity(file_record.id, user_id, "upload", db)
+            
+            return await self._file_to_response(file_record, db)
+            
+        except FileValidationError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        except Exception as e:
+            # Nettoyer le fichier en cas d'erreur
+            if 'file_path' in locals():
+                await self.storage.delete_file(file_path)
+            raise HTTPException(status_code=500, detail=f"Erreur upload: {str(e)}")
+    
+    async def get_file(self, file_id: str, user_id: str, db: AsyncSession) -> Optional[FileResponse]:
+        """Récupère un fichier par ID"""
+        
+        query = select(FileShare).where(FileShare.id == file_id)
+        result = await db.execute(query)
+        file_record = result.scalar_one_or_none()
+        
+        if not file_record:
+            return None
+        
+        # Vérifier les permissions
+        if not await self._check_file_permission(file_record, user_id, "view", db):
+            raise HTTPException(status_code=403, detail="Accès refusé")
+        
+        # Mettre à jour les statistiques
+        file_record.view_count += 1
+        file_record.last_accessed = datetime.now(timezone.utc)
+        await db.commit()
+        
+        # Enregistrer l'activité
+        await self._log_activity(file_id, user_id, "view", db)
+        
+        return await self._file_to_response(file_record, db)
+    
+    async def update_file(
+        self,
+        file_id: str,
+        file_update: FileUpdate,
+        user_id: str,
+        db: AsyncSession
+    ) -> Optional[FileResponse]:
+        """Met à jour les métadonnées d'un fichier"""
+        
+        query = select(FileShare).where(FileShare.id == file_id)
+        result = await db.execute(query)
+        file_record = result.scalar_one_or_none()
+        
+        if not file_record:
+            return None
+        
+        # Vérifier les permissions
+        if not await self._check_file_permission(file_record, user_id, "edit", db):
+            raise HTTPException(status_code=403, detail="Accès refusé")
+        
+        # Mettre à jour les champs
+        update_data = file_update.model_dump(exclude_unset=True)
+        for field, value in update_data.items():
+            setattr(file_record, field, value)
+        
+        file_record.updated_at = datetime.now(timezone.utc)
+        await db.commit()
+        
+        # Enregistrer l'activité
+        await self._log_activity(file_id, user_id, "edit", db)
+        
+        return await self._file_to_response(file_record, db)
+    
+    async def delete_file(self, file_id: str, user_id: str, db: AsyncSession) -> bool:
+        """Supprime un fichier"""
+        
+        query = select(FileShare).where(FileShare.id == file_id)
+        result = await db.execute(query)
+        file_record = result.scalar_one_or_none()
+        
+        if not file_record:
+            return False
+        
+        # Vérifier les permissions
+        if not await self._check_file_permission(file_record, user_id, "delete", db):
+            raise HTTPException(status_code=403, detail="Accès refusé")
+        
+        # Supprimer le fichier du stockage
+        await self.storage.delete_file(file_record.file_path, storage_provider=file_record.storage_provider)
+        
+        # Marquer comme supprimé
+        file_record.status = FileStatus.DELETED
+        await db.commit()
+        
+        # Enregistrer l'activité
+        await self._log_activity(file_id, user_id, "delete", db)
+        
+        return True
+    
+    async def search_files(
+        self,
+        search_params: FileSearchParams,
+        user_id: str,
+        page: int = 1,
+        per_page: int = 20,
+        db: AsyncSession = None
+    ) -> Dict[str, Any]:
+        """Recherche des fichiers avec filtres"""
+        
+        query = select(FileShare).where(
+            and_(
+                FileShare.status == FileStatus.READY,
+                or_(
+                    FileShare.uploaded_by == user_id,
+                    FileShare.is_public == True
+                )
+            )
+        )
+        
+        # Appliquer les filtres
+        if search_params.query:
+            query = query.where(
+                or_(
+                    FileShare.original_name.ilike(f"%{search_params.query}%"),
+                    FileShare.description.ilike(f"%{search_params.query}%")
+                )
+            )
+        
+        if search_params.file_type:
+            query = query.where(FileShare.file_type == search_params.file_type)
+        
+        if search_params.mime_type:
+            query = query.where(FileShare.mime_type == search_params.mime_type)
+        
+        if search_params.uploaded_by:
+            query = query.where(FileShare.uploaded_by == search_params.uploaded_by)
+        
+        if search_params.min_size:
+            query = query.where(FileShare.file_size >= search_params.min_size)
+        
+        if search_params.max_size:
+            query = query.where(FileShare.file_size <= search_params.max_size)
+        
+        if search_params.uploaded_after:
+            query = query.where(FileShare.created_at >= search_params.uploaded_after)
+        
+        if search_params.uploaded_before:
+            query = query.where(FileShare.created_at <= search_params.uploaded_before)
+        
+        # Pagination
+        total_query = select(func.count()).select_from(query.subquery())
+        total_result = await db.execute(total_query)
+        total = total_result.scalar()
+        
+        offset = (page - 1) * per_page
+        paginated_query = query.offset(offset).limit(per_page).order_by(FileShare.created_at.desc())
+        
+        result = await db.execute(paginated_query)
+        files = result.scalars().all()
+        
+        # Convertir en réponses
+        file_responses = []
+        for file_record in files:
+            file_responses.append(await self._file_to_response(file_record, db))
+        
+        return {
+            'files': file_responses,
+            'total': total,
+            'page': page,
+            'per_page': per_page,
+            'pages': (total + per_page - 1) // per_page
+        }
+    
+    async def create_folder(
+        self,
+        name: str,
+        user_id: str,
+        parent_id: Optional[str] = None,
+        db: AsyncSession = None
+    ) -> FolderResponse:
+        """Crée un nouveau dossier"""
+        
+        # Construire le chemin
+        path = name
+        level = 0
+        
+        if parent_id:
+            parent_query = select(FileFolder).where(FileFolder.id == parent_id)
+            parent_result = await db.execute(parent_query)
+            parent_folder = parent_result.scalar_one_or_none()
+            
+            if not parent_folder:
+                raise HTTPException(status_code=404, detail="Dossier parent non trouvé")
+            
+            if parent_folder.owner_id != user_id:
+                raise HTTPException(status_code=403, detail="Accès refusé")
+            
+            path = f"{parent_folder.path}/{name}"
+            level = parent_folder.level + 1
+        
+        # Créer le dossier
+        folder = FileFolder(
+            name=name,
+            parent_id=parent_id,
+            path=path,
+            level=level,
+            owner_id=user_id
+        )
+        
+        db.add(folder)
+        await db.commit()
+        await db.refresh(folder)
+        
+        return await self._folder_to_response(folder, db)
+    
+    async def add_file_to_folder(
+        self,
+        file_id: str,
+        folder_id: str,
+        user_id: str,
+        db: AsyncSession
+    ) -> bool:
+        """Ajoute un fichier à un dossier"""
+        
+        # Vérifier que le dossier existe et appartient à l'utilisateur
+        folder_query = select(FileFolder).where(
+            and_(
+                FileFolder.id == folder_id,
+                FileFolder.owner_id == user_id
+            )
+        )
+        folder_result = await db.execute(folder_query)
+        folder = folder_result.scalar_one_or_none()
+        
+        if not folder:
+            raise HTTPException(status_code=404, detail="Dossier non trouvé")
+        
+        # Vérifier que le fichier existe
+        file_query = select(FileShare).where(FileShare.id == file_id)
+        file_result = await db.execute(file_query)
+        file_record = file_result.scalar_one_or_none()
+        
+        if not file_record:
+            raise HTTPException(status_code=404, detail="Fichier non trouvé")
+        
+        # Vérifier les permissions
+        if not await self._check_file_permission(file_record, user_id, "edit", db):
+            raise HTTPException(status_code=403, detail="Accès refusé")
+        
+        # Créer l'association
+        folder_item = FileFolderItem(
+            folder_id=folder_id,
+            file_id=file_id
+        )
+        
+        db.add(folder_item)
+        await db.commit()
+        
+        return True
+    
+    async def get_folder(self, folder_id: str, user_id: str, db: AsyncSession) -> Optional[FolderResponse]:
+        """Récupère un dossier par ID"""
+        result = await db.execute(select(FileFolder).where(FileFolder.id == folder_id))
+        folder = result.scalar_one_or_none()
+        if not folder:
+            return None
+        if str(folder.owner_id) != user_id:
+            raise HTTPException(status_code=403, detail="Accès refusé")
+        return await self._folder_to_response(folder, db)
+
+    async def update_folder(self, folder_id: str, folder_update, user_id: str, db: AsyncSession) -> Optional[FolderResponse]:
+        """Met à jour un dossier"""
+        result = await db.execute(select(FileFolder).where(FileFolder.id == folder_id))
+        folder = result.scalar_one_or_none()
+        if not folder:
+            return None
+        if str(folder.owner_id) != user_id:
+            raise HTTPException(status_code=403, detail="Accès refusé")
+        for field, value in folder_update.model_dump(exclude_unset=True).items():
+            setattr(folder, field, value)
+        await db.commit()
+        await db.refresh(folder)
+        return await self._folder_to_response(folder, db)
+
+    async def delete_folder(self, folder_id: str, user_id: str, db: AsyncSession) -> bool:
+        """Supprime un dossier"""
+        result = await db.execute(select(FileFolder).where(FileFolder.id == folder_id))
+        folder = result.scalar_one_or_none()
+        if not folder:
+            return False
+        if str(folder.owner_id) != user_id:
+            raise HTTPException(status_code=403, detail="Accès refusé")
+        await db.delete(folder)
+        await db.commit()
+        return True
+
+    async def get_folder_tree(self, user_id: str, db: AsyncSession) -> list:
+        """Récupère l'arborescence des dossiers"""
+        result = await db.execute(
+            select(FileFolder).where(and_(FileFolder.owner_id == user_id, FileFolder.parent_id == None))
+        )
+        root_folders = result.scalars().all()
+        return [await self._folder_to_response(f, db) for f in root_folders]
+
+    async def remove_file_from_folder(self, file_id: str, folder_id: str, user_id: str, db: AsyncSession) -> bool:
+        """Retire un fichier d'un dossier"""
+        result = await db.execute(
+            select(FileFolderItem).where(and_(FileFolderItem.file_id == file_id, FileFolderItem.folder_id == folder_id))
+        )
+        item = result.scalar_one_or_none()
+        if not item:
+            return False
+        await db.delete(item)
+        await db.commit()
+        return True
+
+    async def create_file_permission(self, file_id: str, permission_data, user_id: str, db: AsyncSession):
+        """Crée une permission sur un fichier"""
+        from api.models.sql.files import FilePermission
+        from api.schemas.files import FilePermissionResponse
+        permission = FilePermission(
+            file_id=file_id,
+            user_id=str(permission_data.user_id) if permission_data.user_id else None,
+            group_id=str(permission_data.group_id) if permission_data.group_id else None,
+            granted_by=user_id,
+            can_view=permission_data.can_view,
+            can_download=permission_data.can_download,
+            can_edit=permission_data.can_edit,
+            can_delete=permission_data.can_delete,
+            can_share=permission_data.can_share,
+        )
+        db.add(permission)
+        await db.commit()
+        await db.refresh(permission)
+        return FilePermissionResponse(
+            id=permission.id, file_id=permission.file_id,
+            user_id=permission.user_id, group_id=permission.group_id,
+            user_name=None, group_name=None,
+            granted_by=permission.granted_by, grantor_name=user_id,
+            granted_at=permission.granted_at, expires_at=permission.expires_at,
+            can_view=permission.can_view, can_download=permission.can_download,
+            can_edit=permission.can_edit, can_delete=permission.can_delete,
+            can_share=permission.can_share,
+        )
+
+    async def get_file_permissions(self, file_id: str, user_id: str, db: AsyncSession) -> list:
+        """Récupère les permissions d'un fichier"""
+        from api.models.sql.files import FilePermission
+        from api.schemas.files import FilePermissionResponse
+        result = await db.execute(select(FilePermission).where(FilePermission.file_id == file_id))
+        permissions = result.scalars().all()
+        return [
+            FilePermissionResponse(
+                id=p.id, file_id=p.file_id, user_id=p.user_id, group_id=p.group_id,
+                user_name=None, group_name=None, granted_by=p.granted_by, grantor_name="",
+                granted_at=p.granted_at, expires_at=p.expires_at,
+                can_view=p.can_view, can_download=p.can_download,
+                can_edit=p.can_edit, can_delete=p.can_delete, can_share=p.can_share,
+            )
+            for p in permissions
+        ]
+
+    async def delete_file_permission(self, permission_id: str, user_id: str, db: AsyncSession) -> bool:
+        """Supprime une permission"""
+        from api.models.sql.files import FilePermission
+        result = await db.execute(select(FilePermission).where(FilePermission.id == permission_id))
+        permission = result.scalar_one_or_none()
+        if not permission:
+            return False
+        await db.delete(permission)
+        await db.commit()
+        return True
+
+    async def get_user_file_stats(self, user_id: str, db: AsyncSession):
+        """Récupère les statistiques des fichiers d'un utilisateur"""
+        from api.schemas.files import FileStats
+        total_result = await db.execute(
+            select(func.count()).select_from(FileShare).where(
+                and_(FileShare.uploaded_by == user_id, FileShare.status != FileStatus.DELETED)
+            )
+        )
+        total = total_result.scalar()
+        size_result = await db.execute(
+            select(func.sum(FileShare.file_size)).where(
+                and_(FileShare.uploaded_by == user_id, FileShare.status != FileStatus.DELETED)
+            )
+        )
+        total_size = size_result.scalar() or 0
+        return FileStats(
+            total_files=total, total_size=total_size,
+            files_by_type={}, storage_used=total_size,
+            files_uploaded_today=0
+        )
+
+    async def _check_file_permission(
+        self,
+        file_record: FileShare,
+        user_id: str,
+        permission: str,
+        db: AsyncSession
+    ) -> bool:
+        """Vérifie les permissions d'un utilisateur sur un fichier"""
+        
+        # Le propriétaire a tous les droits
+        if str(file_record.uploaded_by) == user_id:
+            return True
+        
+        # Les fichiers publics peuvent être vus et téléchargés
+        if file_record.is_public and permission in ['view', 'download']:
+            return True
+        
+        # Vérifier les permissions explicites
+        permission_query = select(FilePermission).where(
+            and_(
+                FilePermission.file_id == file_record.id,
+                FilePermission.user_id == user_id,
+                or_(
+                    FilePermission.expires_at.is_(None),
+                    FilePermission.expires_at > datetime.now(timezone.utc)
+                )
+            )
+        )
+        
+        result = await db.execute(permission_query)
+        file_permission = result.scalar_one_or_none()
+        
+        if not file_permission:
+            return False
+        
+        # Vérifier la permission spécifique
+        permission_map = {
+            'view': file_permission.can_view,
+            'download': file_permission.can_download,
+            'edit': file_permission.can_edit,
+            'delete': file_permission.can_delete,
+            'share': file_permission.can_share
+        }
+        
+        return permission_map.get(permission, False)
+    
+    async def _log_activity(
+        self,
+        file_id: str,
+        user_id: str,
+        action: str,
+        db: AsyncSession,
+        details: Dict[str, Any] = None
+    ) -> None:
+        """Enregistre une activité sur un fichier"""
+        
+        activity = FileActivity(
+            file_id=file_id,
+            user_id=user_id,
+            action=action,
+            details=details or {}
+        )
+        
+        db.add(activity)
+        await db.commit()
+    
+    async def _file_to_response(self, file_record: FileShare, db: AsyncSession) -> FileResponse:
+        """Convertit un enregistrement de fichier en réponse"""
+        
+        # Récupérer le nom de l'uploader
+        user_query = select(User.full_name).where(User.id == file_record.uploaded_by)
+        user_result = await db.execute(user_query)
+        uploader_name = user_result.scalar_one_or_none() or "Utilisateur inconnu"
+        
+        return FileResponse(
+            id=file_record.id,
+            original_name=file_record.original_name,
+            filename=file_record.filename,
+            mime_type=file_record.mime_type,
+            file_type=file_record.file_type,
+            file_size=file_record.file_size,
+            file_path=file_record.file_path,
+            storage_provider=file_record.storage_provider,
+            storage_url=file_record.storage_url,
+            metadata=file_record.file_metadata,
+            description=file_record.description,
+            alt_text=file_record.alt_text,
+            is_public=file_record.is_public,
+            is_downloadable=file_record.is_downloadable,
+            status=file_record.status,
+            processing_progress=file_record.processing_progress,
+            download_count=file_record.download_count,
+            view_count=file_record.view_count,
+            created_at=file_record.created_at,
+            updated_at=file_record.updated_at,
+            last_accessed=file_record.last_accessed,
+            uploaded_by=file_record.uploaded_by,
+            uploader_name=uploader_name,
+            expires_at=file_record.expires_at
+        )
+    
+    async def _folder_to_response(self, folder: FileFolder, db: AsyncSession) -> FolderResponse:
+        """Convertit un dossier en réponse"""
+        
+        # Récupérer le nom du propriétaire
+        user_query = select(User.full_name).where(User.id == folder.owner_id)
+        user_result = await db.execute(user_query)
+        owner_name = user_result.scalar_one_or_none() or "Utilisateur inconnu"
+        
+        return FolderResponse(
+            id=folder.id,
+            name=folder.name,
+            description=folder.description,
+            color=folder.color,
+            is_shared=folder.is_shared,
+            parent_id=folder.parent_id,
+            path=folder.path,
+            level=folder.level,
+            created_at=folder.created_at,
+            updated_at=folder.updated_at,
+            owner_id=folder.owner_id,
+            owner_name=owner_name
+        )
+
+
+# Instance globale du service
+file_service = FileService()

@@ -1,0 +1,285 @@
+"""
+Application configuration using Pydantic Settings
+"""
+
+import os
+from functools import lru_cache
+from typing import List, Optional, Any, Dict
+from pydantic import Field, field_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+class Settings(BaseSettings):
+    """Application settings"""
+
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=False,
+        extra='ignore',
+    )
+
+    FAOSTAT_JWT: Optional[str] = None
+
+    # Project info
+    PROJECT_NAME: str = "AgriIntel360"
+    VERSION: str = "1.0.0"
+    DESCRIPTION: str = "Plateforme Intelligente de Décision Agricole"
+    API_V1_STR: str = "/api/v1"
+
+    # Environment
+    ENVIRONMENT: str = Field(default="development")
+    DEBUG: bool = Field(default=True)
+
+    @field_validator("DEBUG", mode="before")
+    @classmethod
+    def validate_debug(cls, v: Any) -> bool:
+        if isinstance(v, str):
+            return v.lower() in ("true", "1", "yes")
+        return bool(v)
+
+    # Database URLs — must be set in .env; defaults are safe but non-functional
+    DATABASE_URL: str = Field(
+        default="postgresql://postgres:CHANGE_ME@127.0.0.1:5432/agriintel360"
+    )
+    MONGODB_URL: str = Field(default="")
+    REDIS_URL: str = Field(default="redis://127.0.0.1:6379")
+    ELASTICSEARCH_URL: str = Field(default="http://localhost:9200")
+    MONGODB_ENABLED: bool = False
+    ELASTICSEARCH_ENABLED: bool = False
+    CLOUDINARY_ENABLED: bool = False
+    CLOUDINARY_CLOUD_NAME: Optional[str] = None
+    CLOUDINARY_API_KEY: Optional[str] = None
+    CLOUDINARY_API_SECRET: Optional[str] = None
+    CLOUDINARY_UPLOAD_FOLDER: str = "agriintel"
+
+    # JWT Settings
+    JWT_SECRET_KEY: str = Field(default="", description="Must be set in .env — openssl rand -hex 64")
+    JWT_ALGORITHM: str = "HS256"
+    JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
+    JWT_REFRESH_TOKEN_EXPIRE_DAYS: int = 7
+
+    # Security
+    BCRYPT_ROUNDS: int = 12
+    ALLOWED_HOSTS: List[str] = ["localhost", "127.0.0.1"]
+
+    @field_validator("ALLOWED_HOSTS", mode="before")
+    @classmethod
+    def assemble_allowed_hosts(cls, v: Any) -> List[str]:
+        if isinstance(v, str) and v.startswith("["):
+            import json
+            try:
+                return json.loads(v)
+            except (json.JSONDecodeError, TypeError):
+                pass
+        if isinstance(v, str):
+            return [i.strip().strip('"').strip("'") for i in v.split(",")]
+        elif isinstance(v, list):
+            return v
+        raise ValueError(v)
+
+    # Default administrator account — MUST be overridden in .env for production
+    DEFAULT_ADMIN_EMAIL: str = Field(default="admin@agri.com")
+    DEFAULT_ADMIN_PASSWORD: str = Field(default="", description="Must be set in .env — strong random password")
+    DEFAULT_ADMIN_USERNAME: str = "admin"
+    DEFAULT_ADMIN_FULL_NAME: str = "Administrateur AgriIntel360"
+
+    # CORS
+    BACKEND_CORS_ORIGINS: List[str] = Field(
+        default=[
+            "http://localhost:3000",
+            "http://localhost:8001",
+            "http://127.0.0.1:3000",
+            "http://127.0.0.1:8001",
+            "https://agriintel360.lsgrouptogo.com",
+        ]
+    )
+
+    @field_validator("BACKEND_CORS_ORIGINS", mode="before")
+    @classmethod
+    def assemble_cors_origins(cls, v: Any) -> List[str]:
+        if isinstance(v, str) and v.startswith("["):
+            import json
+            try:
+                return json.loads(v)
+            except (json.JSONDecodeError, TypeError):
+                pass
+        if isinstance(v, str):
+            return [i.strip().strip('"').strip("'") for i in v.split(",")]
+        elif isinstance(v, list):
+            return v
+        raise ValueError(v)
+
+    # File upload
+    MAX_FILE_SIZE_MB: int = 100
+    UPLOAD_DIR: str = "uploads"
+    ALLOWED_FILE_TYPES: List[str] = [
+        "image/jpeg",
+        "image/png",
+        "image/gif",
+        "image/webp",
+        "application/pdf",
+        "text/csv",
+        "application/vnd.ms-excel",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    ]
+
+    # External API Keys
+    OPENWEATHER_API_KEY: Optional[str] = None
+    FAO_API_KEY: Optional[str] = None
+    WORLD_BANK_API_KEY: Optional[str] = None
+    MAPBOX_ACCESS_TOKEN: Optional[str] = None
+
+    # OAuth
+    GOOGLE_CLIENT_ID: Optional[str] = None
+    GOOGLE_CLIENT_SECRET: Optional[str] = None
+    MICROSOFT_CLIENT_ID: Optional[str] = None
+    MICROSOFT_CLIENT_SECRET: Optional[str] = None
+
+    # AI/ML Keys
+    OPENAI_API_KEY: Optional[str] = None
+    HUGGINGFACE_API_KEY: Optional[str] = None
+    LANGCHAIN_API_KEY: Optional[str] = None
+
+    # OpenRouter (Kimi + DeepSeek)
+    OPENROUTER_API_KEY: Optional[str] = None
+    OPENROUTER_BASE_URL: str = "https://openrouter.ai/api/v1"
+    KIMI_MODEL: str = "moonshotai/kimi-k2"
+    DEEPSEEK_MODEL: str = "deepseek/deepseek-chat"
+    DEEPSEEK_API_KEY: Optional[str] = None
+    DEFAULT_LLM_PROVIDER: str = "kimi"  # "kimi" | "deepseek" | "openai"
+
+    # Frontend URL — set FRONTEND_URL=https://agriintel360.lsgrouptogo.com in production .env
+    FRONTEND_URL: str = Field(default="https://agriintel360.lsgrouptogo.com")
+
+    # Email settings (for fastapi-mail)
+    MAIL_USERNAME: Optional[str] = None
+    MAIL_PASSWORD: Optional[str] = None
+    MAIL_FROM: Optional[str] = None
+    MAIL_PORT: int = 587
+    MAIL_SERVER: Optional[str] = None
+    MAIL_STARTTLS: bool = True
+    MAIL_SSL_TLS: bool = False
+
+    # SMTP direct (for notifications service)
+    SMTP_HOST: Optional[str] = None
+    SMTP_PORT: int = 587
+    SMTP_USERNAME: Optional[str] = None
+    SMTP_PASSWORD: Optional[str] = None
+    SMTP_TLS: bool = True
+    SMTP_SSL: bool = False
+
+    # SMS/Notifications
+    TWILIO_ACCOUNT_SID: Optional[str] = None
+    TWILIO_AUTH_TOKEN: Optional[str] = None
+    TWILIO_PHONE_NUMBER: Optional[str] = None
+
+    # Firebase Cloud Messaging (push notifications)
+    FCM_SERVER_KEY: Optional[str] = None
+
+    # Cache TTL (seconds)
+    CACHE_TTL_SHORT: int = 300  # 5 minutes
+    CACHE_TTL_MEDIUM: int = 3600  # 1 hour
+    CACHE_TTL_LONG: int = 86400  # 24 hours
+
+    # Logging
+    LOG_LEVEL: str = "INFO"
+    LOG_FILE: str = "logs/agriintel360.log"
+
+    # Monitoring
+    SENTRY_DSN: Optional[str] = None
+    PROMETHEUS_ENABLED: bool = True
+
+    # Pagination
+    DEFAULT_PAGE_SIZE: int = 20
+    MAX_PAGE_SIZE: int = 100
+
+    # Rate limiting
+    RATE_LIMIT_PER_MINUTE: int = 60
+
+    # ML Model settings
+    ML_MODEL_PATH: str = "ml-models"
+    MODEL_UPDATE_INTERVAL_HOURS: int = 24
+
+    # Data processing
+    DATA_RETENTION_DAYS: int = 365 * 5  # 5 years
+    BATCH_SIZE: int = 1000
+
+    @property
+    def database_url_async(self) -> str:
+        """Get async database URL"""
+        return self.DATABASE_URL.replace("postgresql://", "postgresql+asyncpg://")
+
+    @property
+    def database_url_sync(self) -> str:
+        """Get sync database URL for Alembic"""
+        return self.DATABASE_URL
+
+    @property
+    def is_production(self) -> bool:
+        """Check if running in production"""
+        return self.ENVIRONMENT.lower() == "production"
+
+    @property
+    def is_development(self) -> bool:
+        """Check if running in development"""
+        return self.ENVIRONMENT.lower() == "development"
+
+    def validate_secrets(self) -> None:
+        """Raise ValueError on startup if any secret is missing or still CHANGE_ME."""
+        if self.is_production:
+            secrets = {
+                "JWT_SECRET_KEY": self.JWT_SECRET_KEY,
+                "DEFAULT_ADMIN_PASSWORD": self.DEFAULT_ADMIN_PASSWORD,
+                "DATABASE_URL": self.DATABASE_URL,
+            }
+            if self.MONGODB_ENABLED and self.MONGODB_URL:
+                secrets["MONGODB_URL"] = self.MONGODB_URL
+            for name, val in secrets.items():
+                if not val or "CHANGE_ME" in str(val):
+                    raise ValueError(
+                        f"SECURITY CRITICAL: {name} is {'empty' if not val else 'still CHANGE_ME'} "
+                        f"in production environment. Set it in .env before starting."
+                    )
+                if "localhost" in str(val):
+                    raise ValueError(
+                        f"CONFIG ERROR: {name} uses 'localhost' — use 127.0.0.1 "
+                        f"(localhost resolves to ::1 and is refused on this server)."
+                    )
+            if "localhost" in self.REDIS_URL:
+                raise ValueError(
+                    "CONFIG ERROR: REDIS_URL uses 'localhost' — use 127.0.0.1."
+                )
+
+    def get_external_api_config(self) -> Dict[str, Optional[str]]:
+        """Get external API configuration"""
+        return {
+            "openweather": self.OPENWEATHER_API_KEY,
+            "fao": self.FAO_API_KEY,
+            "world_bank": self.WORLD_BANK_API_KEY,
+            "mapbox": self.MAPBOX_ACCESS_TOKEN,
+        }
+
+    def get_ai_config(self) -> Dict[str, Optional[str]]:
+        """Get AI/ML configuration"""
+        return {
+            "openai": self.OPENAI_API_KEY,
+            "huggingface": self.HUGGINGFACE_API_KEY,
+            "langchain": self.LANGCHAIN_API_KEY,
+        }
+
+    @property
+    def cloudinary_active(self) -> bool:
+        """Check if Cloudinary storage is configured and enabled."""
+        return bool(
+            self.CLOUDINARY_ENABLED
+            and self.CLOUDINARY_CLOUD_NAME
+            and self.CLOUDINARY_API_KEY
+            and self.CLOUDINARY_API_SECRET
+        )
+
+
+@lru_cache()
+def get_settings() -> Settings:
+    """Get cached settings instance"""
+    return Settings()
